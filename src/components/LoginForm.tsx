@@ -1,18 +1,22 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Link, useNavigate} from "react-router-dom"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const navigate = useNavigate()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,15 +24,14 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      // Replace with your actual authentication logic
-      console.log("Login attempt:", { email, password })
+      await login({ email, password })
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // TODO: Add actual authentication
-    } catch (err) {
-      setError("Invalid email or password")
+      // Redirect to the page user tried to access or home
+      const from =  "/profile"
+      navigate(from, { replace: true })
+    } catch (_err) {
+      const errorMessage = _err instanceof Error ? _err.message : "Invalid email or password"
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -103,9 +106,9 @@ export function LoginForm() {
             </a>
             <div className="text-slate-400">
               Don't have an account?{" "}
-              <a href="#" className="text-blue-400 hover:text-blue-300 font-semibold">
+              <Link to={"/signup"}  className="text-blue-400 hover:text-blue-300 font-semibold">
                 Sign up
-              </a>
+              </Link>
             </div>
           </div>
         </div>
