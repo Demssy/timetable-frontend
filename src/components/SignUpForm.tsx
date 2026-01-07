@@ -7,14 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Link, useNavigate } from "react-router-dom"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function SignupForm() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [birthDate, setBirthDate] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const navigate = useNavigate()
+  const { register } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,23 +30,33 @@ export function SignupForm() {
       return
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters")
+      return
+    }
+
+    // Validate birth date is in the past
+    const birthDateObj = new Date(birthDate)
+    if (birthDateObj >= new Date()) {
+      setError("Birth date must be in the past")
       return
     }
 
     setIsLoading(true)
 
     try {
-      // Replace with your actual registration logic
-      console.log("Signup attempt:", { name, email, password })
+      await register({
+        email,
+        password,
+        fullName: name,
+        birthDate,
+      })
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // TODO: Add actual registration
+      // Registration successful, redirect to home
+      navigate("/", { replace: true })
     } catch (err) {
-      setError("Something went wrong. Please try again.")
+      const errorMessage = err instanceof Error ? err.message : "Something went wrong. Please try again."
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -95,6 +110,21 @@ export function SignupForm() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="birthDate" className="text-slate-300">
+                Birth Date
+              </Label>
+              <Input
+                id="birthDate"
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                required
+                max={new Date().toISOString().split("T")[0]}
+                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-300">
                 Password
               </Label>
@@ -132,7 +162,7 @@ export function SignupForm() {
 
             <Button
               type="submit"
-              disabled={isLoading || !name || !email || !password || !confirmPassword}
+              disabled={isLoading || !name || !email || !birthDate || !password || !confirmPassword}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2"
             >
               {isLoading ? "Creating account..." : "Create account"}
@@ -142,9 +172,9 @@ export function SignupForm() {
           {/* Footer */}
           <div className="text-center text-sm text-slate-400">
             Already have an account?{" "}
-            <a href="/" className="text-blue-400 hover:text-blue-300 font-semibold">
+            <Link to="/login" className="text-blue-400 hover:text-blue-300 font-semibold">
               Sign in
-            </a>
+            </Link>
           </div>
         </div>
       </Card>
