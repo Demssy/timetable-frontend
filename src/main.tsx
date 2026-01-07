@@ -16,7 +16,7 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<HomePage />} />
+              <Route index element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="login" element={<LoginPage />} />
             <Route path="signup" element={<SignInPage />} />
             <Route
@@ -27,7 +27,10 @@ createRoot(document.getElementById('root')!).render(
                 </ProtectedRoute>
               }
             />
+
           </Route>
+
+
         </Routes>
       </AuthProvider>
     </BrowserRouter>
