@@ -42,6 +42,10 @@ class AuthService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
+      console.error('=== SERVER ERROR ===')
+      console.error('Status:', response.status)
+      console.error('Status Text:', response.statusText)
+      console.error('Error Data:', errorData)
       throw new Error(errorData?.message || `Request failed: ${response.statusText}`)
     }
 
