@@ -1,12 +1,14 @@
 import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
+import {WeeklyTimetable} from "@/components/weekly-timetable.tsx";
 
 export default function ProfilePage() {
   const { user } = useAuth()
 
   return (
-    <div className="space-y-6 w-full max-w-2xl">
-      <h1 className="text-3xl font-bold text-white">Profile</h1>
+    <div className="space-y-2 w-full max-w-7xl flex row space-between gap-32">
+      <div className="w-2/5">
+      <h1 className="text-3xl font-bold text-white mb-4">Profile</h1>
 
       <Card className="bg-slate-900/80 border-slate-800">
         <CardContent className="p-6 space-y-4">
@@ -42,6 +44,10 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+      </div>
+      <div className="w-3/5">
+        <WeeklyTimetable mobileOnly />
+      </div>
     </div>
   )
 }
