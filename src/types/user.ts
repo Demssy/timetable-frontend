@@ -1,8 +1,12 @@
+import { DanceLevel, UserRole } from "./enums"
+
 export interface User {
   id: number
   email: string
   fullName: string
-  role: string
+  role: UserRole | string
+  birthDate?: string
+  danceLevel?: DanceLevel | string
   isActive: boolean
 }
 

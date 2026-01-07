@@ -18,6 +18,8 @@ You are an expert Senior Frontend Developer specializing in React 19, TypeScript
 * `src/contexts`: React Context.
 * `src/api`: Backend interaction layer (Axios/Fetch).
 * `src/types`: TypeScript interfaces that strictly match Backend DTOs.
+* `src/services`: Business logic and data manipulation.
+* `src/hooks`: Custom React hooks.
 
 ### 2. Coding Style Guidelines
 * **Components:** Use **Functional Components** with props typed via `interface`.
@@ -33,7 +35,8 @@ You must strictly follow the DTO contracts defined on the backend:
 **Authentication (`/api/auth`):**
 * `POST /register` -> Body: `RegisterRequest` (email, password, fullName, birthDate).
 * `POST /login` -> Body: `AuthenticationRequest` (email, password).
-* **Response:** `{ token: string }`. Store the token (localStorage/cookies) and append it to the `Authorization: Bearer <token>` header.
+* `GET /me` -> Returns: `UserDTO` (id, email, fullName, role, birthDate, danceLevel).
+
 
 **Entities (Types):**
 * **User/Student:** `{ id, email, fullName, role, birthDate, danceLevel }`.

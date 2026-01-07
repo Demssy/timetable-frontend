@@ -63,15 +63,13 @@ class AuthService {
   }
 
   async register(data: RegisterRequest): Promise<User> {
-    const response = await this.request<{ user: User }>(
-      "/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
+    return await this.request<User>(
+        "/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        }
     )
-
-    return response.user
   }
 
   async getCurrentUser(): Promise<User> {
