@@ -31,3 +31,26 @@ export const UserRole = {
 
 export type UserRole = typeof UserRole[keyof typeof UserRole]
 
+export const DanceStyle = {
+  SALSA:     "SALSA",
+  BACHATA:   "BACHATA",
+  TANGO:     "TANGO",
+  WALTZ:     "WALTZ",
+  FOXTROT:   "FOXTROT",
+  QUICKSTEP: "QUICKSTEP",
+  CHACHA:    "CHACHA",
+  RUMBA:     "RUMBA",
+  SAMBA:     "SAMBA",
+  JIVE:      "JIVE",
+} as const
+
+export type DanceStyle = typeof DanceStyle[keyof typeof DanceStyle]
+
+export const SolverStatus = {
+  NOT_SOLVING:       "NOT_SOLVING",
+  SOLVING_SCHEDULED: "SOLVING_SCHEDULED",
+  SOLVING_ACTIVE:    "SOLVING_ACTIVE",
+} as const
+
+export type SolverStatus = typeof SolverStatus[keyof typeof SolverStatus]
+

@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
+import { UserRole } from "@/types/enums"
 
 export default function Layout() {
   const { isAuthenticated, user, logout } = useAuth()
@@ -31,6 +32,11 @@ export default function Layout() {
               </>
             ) : (
               <>
+                {user?.role === UserRole.ADMIN && (
+                  <Link to="/admin" className="text-slate-300 hover:text-white">
+                    Admin
+                  </Link>
+                )}
                 <Link to="/profile" className="text-slate-300 hover:text-white">
                   Profile
                 </Link>
@@ -61,4 +67,3 @@ export default function Layout() {
     </main>
   )
 }
-

@@ -1,4 +1,3 @@
-"use client"
 
 import { cn } from "@/lib/utils.ts"
 import type { ScheduledEvent } from "@/components/weekly-timetable.tsx"
