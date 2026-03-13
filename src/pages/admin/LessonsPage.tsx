@@ -60,17 +60,45 @@ export function LessonsPage() {
 
   const fetchAll = async () => {
     setIsLoading(true); setError(null)
+    
     try {
-      const [l, t, g, ts, r] = await Promise.all([
-        lessonApi.getAll(),
+      // 1. Load core dependencies (Teachers, Timeslots, Rooms)
+      // We separate these to ensure they load even if Lessons or Groups fail
+      const [t, ts, r] = await Promise.all([
         teacherService.getAllTeachers(),
-        apiFetch<DanceGroupDTO[]>("/api/dance-groups"),
         timeslotApi.getAll(),
         roomApi.getAll(),
       ])
-      setLessons(l); setTeachers(t); setGroups(g); setTimeslots(ts); setRooms(r)
+      setTeachers(t); setTimeslots(ts); setRooms(r)
+
+      // 2. Load Lessons
+      try {
+        const l = await lessonApi.getAll()
+        setLessons(l)
+      } catch (e) {
+        console.error("Failed to load lessons", e)
+        // Don't fail the whole page, just show empty lessons
+      }
+
+      // 3. Load Dance Groups (Try standard admin endpoint)
+      try {
+        const g = await apiFetch<DanceGroupDTO[]>("/api/admin/dance-groups")
+        setGroups(g)
+      } catch (e) {
+        console.error("Failed to load dance groups at /api/admin/dance-groups", e)
+        try {
+            // Fallback to public endpoint if admin fails
+            const g = await apiFetch<DanceGroupDTO[]>("/api/dance-groups")
+            setGroups(g)
+        } catch (e2) {
+             console.error("Failed to load dance groups at /api/dance-groups", e2)
+             // Only set global error if we really can't load critical data? 
+             // Or just let it be empty and let user see "No groups" in dropdown
+        }
+      }
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data")
+      setError(err instanceof Error ? err.message : "Failed to load core data")
     } finally { setIsLoading(false) }
   }
 

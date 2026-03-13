@@ -57,10 +57,27 @@ export interface CreateLessonRequest {
 
 // ─── Schedule Metadata ────────────────────────────────────────────────────────
 
+export const ScheduleStatus = {
+  DRAFT: "DRAFT",
+  PUBLISHED: "PUBLISHED",
+  ARCHIVED: "ARCHIVED"
+} as const
+
+export type ScheduleStatus = (typeof ScheduleStatus)[keyof typeof ScheduleStatus]
+
 export interface ScheduleMetadataDTO {
   id: number
   name: string
-  weekStartDate: string   // "YYYY-MM-DD"
+  validFrom: string   // "YYYY-MM-DD"
+  validTo: string     // "YYYY-MM-DD"
+  createdAt?: string
+  status?: ScheduleStatus
+}
+
+export interface CreateScheduleRequest {
+  name: string
+  validFrom: string
+  validTo: string
 }
 
 // ─── Solver ───────────────────────────────────────────────────────────────────
