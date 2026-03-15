@@ -28,8 +28,19 @@ export interface TeacherSummary {
 export interface DanceGroupDTO {
   id: number
   name: string
+  danceStyleId: number
+  danceStyleName: string
   danceLevel: DanceLevel
-  size: number
+  minSize: number
+  targetAgeRange: string | null
+}
+
+export interface UpsertDanceGroupRequest {
+  name: string
+  danceStyleId: number
+  danceLevel: DanceLevel
+  minSize: number
+  targetAgeRange: string | null
 }
 
 export interface ScheduledLessonDTO {

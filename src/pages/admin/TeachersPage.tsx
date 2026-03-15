@@ -3,9 +3,8 @@ import { Link } from "react-router-dom"
 import { ChevronRight, Plus, Trash2, Pencil, Search, X } from "lucide-react"
 import { teacherService } from "@/services/teacherService"
 import { userService } from "@/services/userService"
-import type { TeacherResponse, CreateTeacherRequest, UpdateTeacherRequest } from "@/types/teacher"
+import type { TeacherResponse, CreateTeacherRequest, UpdateTeacherRequest, DanceStyleDTO } from "@/types/teacher"
 import type { User } from "@/types/user"
-import { DanceStyle } from "@/types/enums"
 import {
   Card,
   CardContent,
@@ -25,7 +24,7 @@ interface CreateFormState {
   userId: number | null
   maxDailyHours: number
   colorCode: string
-  qualifiedStyles: DanceStyle[]
+  qualifiedStyleIds: number[]
 }
 
 interface EditFormState {
@@ -33,17 +32,27 @@ interface EditFormState {
   email: string
   maxDailyHours: number
   colorCode: string
-  qualifiedStyles: DanceStyle[]
+  qualifiedStyleIds: number[]
 }
 
 const EMPTY_CREATE_FORM: CreateFormState = {
   userId: null,
   maxDailyHours: 6,
   colorCode: "#3498DB",
-  qualifiedStyles: [],
+  qualifiedStyleIds: [],
 }
 
-const ALL_STYLES = Object.values(DanceStyle)
+// Fallback dictionary aligned with current backend dance_styles table.
+const DEFAULT_DANCE_STYLES: DanceStyleDTO[] = [
+  { id: 1, name: "Salsa" },
+  { id: 2, name: "Bachata" },
+  { id: 3, name: "Kizomba" },
+  { id: 4, name: "Hip Hop" },
+  { id: 5, name: "Contemporary" },
+  { id: 6, name: "Jazz Funk" },
+  { id: 7, name: "Ballroom" },
+  { id: 8, name: "Latin" },
+]
 
 // ─── UserAutocomplete ─────────────────────────────────────────────────────────
 
@@ -183,11 +192,12 @@ function UserAutocomplete({ selectedUser, onSelect }: UserAutocompleteProps) {
 // ─── StyleCheckboxGrid ────────────────────────────────────────────────────────
 
 interface StyleCheckboxGridProps {
-  selected: DanceStyle[]
-  onToggle: (style: DanceStyle) => void
+  styles: DanceStyleDTO[]
+  selected: number[]
+  onToggle: (styleId: number) => void
 }
 
-function StyleCheckboxGrid({ selected, onToggle }: StyleCheckboxGridProps) {
+function StyleCheckboxGrid({ styles, selected, onToggle }: StyleCheckboxGridProps) {
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium">
@@ -197,11 +207,11 @@ function StyleCheckboxGrid({ selected, onToggle }: StyleCheckboxGridProps) {
         </span>
       </label>
       <div className="grid grid-cols-2 gap-2 rounded-md border border-input p-3">
-        {ALL_STYLES.map((style) => {
-          const isChecked = selected.includes(style)
+        {styles.map((style) => {
+          const isChecked = selected.includes(style.id)
           return (
             <label
-              key={style}
+              key={style.id}
               className={cn(
                 "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors select-none",
                 isChecked
@@ -213,9 +223,9 @@ function StyleCheckboxGrid({ selected, onToggle }: StyleCheckboxGridProps) {
                 type="checkbox"
                 className="accent-primary"
                 checked={isChecked}
-                onChange={() => onToggle(style)}
+                onChange={() => onToggle(style.id)}
               />
-              {style}
+              {style.name}
             </label>
           )
         })}
@@ -228,6 +238,7 @@ function StyleCheckboxGrid({ selected, onToggle }: StyleCheckboxGridProps) {
 
 export function TeachersPage() {
   const [teachers, setTeachers] = useState<TeacherResponse[]>([])
+  const [availableStyles, setAvailableStyles] = useState<DanceStyleDTO[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -238,7 +249,7 @@ export function TeachersPage() {
   const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE_FORM)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [editForm, setEditForm] = useState<EditFormState>({
-    fullName: "", email: "", maxDailyHours: 6, colorCode: "#3498DB", qualifiedStyles: [],
+    fullName: "", email: "", maxDailyHours: 6, colorCode: "#3498DB", qualifiedStyleIds: [],
   })
 
   const [isSaving, setIsSaving] = useState(false)
@@ -250,8 +261,18 @@ export function TeachersPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const data = await teacherService.getAllTeachers()
+      const [data, styleDictionary] = await Promise.all([
+        teacherService.getAllTeachers(),
+        teacherService.getDanceStyles().catch(() => [] as DanceStyleDTO[]),
+      ])
+
+      const stylesFromTeachers = data.flatMap((teacher) => teacher.qualifiedStyles)
+      const mergedStyles = [...DEFAULT_DANCE_STYLES, ...styleDictionary, ...stylesFromTeachers]
+      const uniqueStyles = Array.from(new Map(mergedStyles.map((style) => [style.id, style])).values())
+        .sort((a, b) => a.id - b.id)
+
       setTeachers(data)
+      setAvailableStyles(uniqueStyles)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load teachers")
     } finally {
@@ -277,8 +298,14 @@ export function TeachersPage() {
       email: teacher.email,
       maxDailyHours: teacher.maxDailyHours,
       colorCode: teacher.colorCode,
-      qualifiedStyles: [...teacher.qualifiedStyles],
+      qualifiedStyleIds: teacher.qualifiedStyles.map((style) => style.id),
     })
+
+    setAvailableStyles((prev) => {
+      const merged = [...prev, ...teacher.qualifiedStyles]
+      return Array.from(new Map(merged.map((style) => [style.id, style])).values())
+    })
+
     setFormError(null)
     setModalMode("edit")
   }
@@ -312,21 +339,21 @@ export function TeachersPage() {
     }))
   }
 
-  const handleCreateStyleToggle = (style: DanceStyle) => {
+  const handleCreateStyleToggle = (styleId: number) => {
     setCreateForm((prev) => ({
       ...prev,
-      qualifiedStyles: prev.qualifiedStyles.includes(style)
-        ? prev.qualifiedStyles.filter((s) => s !== style)
-        : [...prev.qualifiedStyles, style],
+      qualifiedStyleIds: prev.qualifiedStyleIds.includes(styleId)
+        ? prev.qualifiedStyleIds.filter((id) => id !== styleId)
+        : [...prev.qualifiedStyleIds, styleId],
     }))
   }
 
-  const handleEditStyleToggle = (style: DanceStyle) => {
+  const handleEditStyleToggle = (styleId: number) => {
     setEditForm((prev) => ({
       ...prev,
-      qualifiedStyles: prev.qualifiedStyles.includes(style)
-        ? prev.qualifiedStyles.filter((s) => s !== style)
-        : [...prev.qualifiedStyles, style],
+      qualifiedStyleIds: prev.qualifiedStyleIds.includes(styleId)
+        ? prev.qualifiedStyleIds.filter((id) => id !== styleId)
+        : [...prev.qualifiedStyleIds, styleId],
     }))
   }
 
@@ -336,7 +363,7 @@ export function TeachersPage() {
     if (!createForm.userId) return "Please select a user from the search."
     if (createForm.maxDailyHours < 1 || createForm.maxDailyHours > 12) return "Max daily hours must be between 1 and 12."
     if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(createForm.colorCode)) return "Invalid color code format."
-    if (createForm.qualifiedStyles.length === 0) return "Select at least one dance style."
+    if (createForm.qualifiedStyleIds.length === 0) return "Select at least one dance style."
     return null
   }
 
@@ -344,7 +371,7 @@ export function TeachersPage() {
     if (editForm.fullName.trim().length < 2) return "Full name must be at least 2 characters."
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) return "Please enter a valid email."
     if (editForm.maxDailyHours < 1 || editForm.maxDailyHours > 12) return "Max daily hours must be between 1 and 12."
-    if (editForm.qualifiedStyles.length === 0) return "Select at least one dance style."
+    if (editForm.qualifiedStyleIds.length === 0) return "Select at least one dance style."
     return null
   }
 
@@ -364,7 +391,7 @@ export function TeachersPage() {
           userId: createForm.userId!,
           maxDailyHours: createForm.maxDailyHours,
           colorCode: createForm.colorCode,
-          qualifiedStyles: createForm.qualifiedStyles,
+          qualifiedStyleIds: createForm.qualifiedStyleIds,
         }
         await teacherService.createTeacher(payload)
       } else if (modalMode === "edit" && editingTeacher) {
@@ -373,7 +400,7 @@ export function TeachersPage() {
           email: editForm.email,
           maxDailyHours: editForm.maxDailyHours,
           colorCode: editForm.colorCode,
-          qualifiedStyles: editForm.qualifiedStyles,
+          qualifiedStyleIds: editForm.qualifiedStyleIds,
         }
         await teacherService.updateTeacher(editingTeacher.id, payload)
       }
@@ -470,8 +497,8 @@ export function TeachersPage() {
                       <td className="p-4">
                         <div className="flex flex-wrap gap-1">
                           {teacher.qualifiedStyles.map((style) => (
-                            <span key={style} className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                              {style}
+                            <span key={style.id} className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                              {style.name}
                             </span>
                           ))}
                         </div>
@@ -569,7 +596,8 @@ export function TeachersPage() {
 
                 {/* Qualified Styles */}
                 <StyleCheckboxGrid
-                  selected={createForm.qualifiedStyles}
+                  styles={availableStyles}
+                  selected={createForm.qualifiedStyleIds}
                   onToggle={handleCreateStyleToggle}
                 />
               </CardContent>
@@ -635,7 +663,7 @@ export function TeachersPage() {
                   </div>
                 </div>
 
-                <StyleCheckboxGrid selected={editForm.qualifiedStyles} onToggle={handleEditStyleToggle} />
+                <StyleCheckboxGrid styles={availableStyles} selected={editForm.qualifiedStyleIds} onToggle={handleEditStyleToggle} />
               </CardContent>
               <div className="flex justify-end gap-2 p-6 pt-0">
                 <Button type="button" variant="outline" onClick={closeModal} disabled={isSaving}>Cancel</Button>

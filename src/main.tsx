@@ -15,6 +15,7 @@ import { TeachersPage } from './pages/admin/TeachersPage'
 import { RoomsPage } from './pages/admin/RoomsPage'
 import { TimeslotsPage } from './pages/admin/TimeslotsPage'
 import { LessonsPage } from './pages/admin/LessonsPage'
+import { DanceGroupsPage } from './pages/admin/DanceGroupsPage'
 import { SchedulesPage } from './pages/admin/SchedulesPage'
 import { ScheduleDetailPage } from './pages/admin/ScheduleDetailPage'
 import { TimetableViewPage } from './pages/admin/TimetableViewPage'
@@ -34,6 +35,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="admin/teachers" element={<AdminRoute><TeachersPage /></AdminRoute>} />
             <Route path="admin/rooms" element={<AdminRoute><RoomsPage /></AdminRoute>} />
             <Route path="admin/timeslots" element={<AdminRoute><TimeslotsPage /></AdminRoute>} />
+            <Route path="admin/dance-groups" element={<AdminRoute><DanceGroupsPage /></AdminRoute>} />
             <Route path="admin/lessons" element={<AdminRoute><LessonsPage /></AdminRoute>} />
             <Route path="admin/schedules" element={<AdminRoute><SchedulesPage /></AdminRoute>} />
             <Route path="admin/schedules/:id" element={<AdminRoute><ScheduleDetailPage /></AdminRoute>} />

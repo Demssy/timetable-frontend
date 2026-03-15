@@ -55,6 +55,13 @@ const ADMIN_CATEGORIES: AdminCategory[] = [
     available: true,
   },
   {
+    title: "Dance Groups",
+    description: "Manage groups, levels, and group sizes for lesson planning.",
+    href: "/admin/dance-groups",
+    icon: Users,
+    available: true,
+  },
+  {
     title: "Rooms",
     description: "Manage dance halls, capacities and constraints.",
     href: "/admin/rooms",

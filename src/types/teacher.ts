@@ -1,4 +1,7 @@
-import type { DanceStyle } from "@/types/enums"
+export interface DanceStyleDTO {
+  id: number
+  name: string
+}
 
 // ─── Response DTO (mirrors backend TeacherResponse) ───────────────────────────
 
@@ -8,7 +11,7 @@ export interface TeacherResponse {
   email: string
   maxDailyHours: number
   colorCode: string
-  qualifiedStyles: DanceStyle[]
+  qualifiedStyles: DanceStyleDTO[]
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────
@@ -21,7 +24,7 @@ export interface CreateTeacherRequest {
   userId: number
   maxDailyHours: number
   colorCode: string
-  qualifiedStyles: DanceStyle[]
+  qualifiedStyleIds: number[]
 }
 
 export interface UpdateTeacherRequest {
@@ -29,7 +32,7 @@ export interface UpdateTeacherRequest {
   email: string
   maxDailyHours: number
   colorCode: string
-  qualifiedStyles: DanceStyle[]
+  qualifiedStyleIds: number[]
 }
 
 

@@ -1,13 +1,13 @@
 // Base fetch wrapper — mirrors userService/teacherService pattern.
 // Uses credentials: "include" so the HTTP-only JWT cookie is sent automatically.
 
-const BASE_URL = "http://localhost:8080"
+
 
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(`${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

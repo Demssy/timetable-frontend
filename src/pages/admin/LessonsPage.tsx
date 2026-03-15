@@ -2,13 +2,12 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { ChevronRight, Plus, Pencil, Trash2, Pin } from "lucide-react"
 import { lessonApi } from "@/api/lessonApi"
+import { danceGroupApi } from "@/api/danceGroupApi"
 import { teacherService } from "@/services/teacherService"
 import { timeslotApi } from "@/api/timeslotApi"
 import { roomApi } from "@/api/roomApi"
-import type { ScheduledLessonDTO, CreateLessonRequest, TimeslotDTO, RoomDTO } from "@/types/schedule"
+import type { ScheduledLessonDTO, CreateLessonRequest, TimeslotDTO, RoomDTO, DanceGroupDTO } from "@/types/schedule"
 import type { TeacherResponse } from "@/types/teacher"
-import type { DanceGroupDTO } from "@/types/schedule"
-import { apiFetch } from "@/api/client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,6 +57,47 @@ export function LessonsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  type LooseLesson = ScheduledLessonDTO & {
+    teacher?: ScheduledLessonDTO["teacher"] | null
+    danceGroup?: ScheduledLessonDTO["danceGroup"] | null
+    teacherId?: number | null
+    danceGroupId?: number | null
+    groupId?: number | null
+    teacherName?: string | null
+    groupName?: string | null
+  }
+
+  const resolveTeacher = (lesson: LooseLesson) => {
+    if (lesson.teacher) return lesson.teacher
+    if (typeof lesson.teacherId === "number") {
+      return teachers.find((t) => t.id === lesson.teacherId) ?? null
+    }
+    return null
+  }
+
+  const resolveGroup = (lesson: LooseLesson) => {
+    if (lesson.danceGroup) return lesson.danceGroup
+    const fallbackGroupId =
+      typeof lesson.danceGroupId === "number"
+        ? lesson.danceGroupId
+        : typeof lesson.groupId === "number"
+          ? lesson.groupId
+          : null
+
+    if (fallbackGroupId !== null) {
+      const byId = groups.find((g) => g.id === fallbackGroupId)
+      if (byId) return byId
+    }
+
+    // Some backend responses provide only group name; map it to loaded groups
+    const fallbackGroupName = lesson.groupName ?? null
+    if (fallbackGroupName) {
+      return groups.find((g) => g.name === fallbackGroupName) ?? null
+    }
+
+    return null
+  }
+
   const fetchAll = async () => {
     setIsLoading(true); setError(null)
     
@@ -75,26 +115,18 @@ export function LessonsPage() {
       try {
         const l = await lessonApi.getAll()
         setLessons(l)
+        console.log(l)
       } catch (e) {
         console.error("Failed to load lessons", e)
         // Don't fail the whole page, just show empty lessons
       }
 
-      // 3. Load Dance Groups (Try standard admin endpoint)
+      // 3. Load Dance Groups
       try {
-        const g = await apiFetch<DanceGroupDTO[]>("/api/admin/dance-groups")
+        const g = await danceGroupApi.getAll()
         setGroups(g)
       } catch (e) {
-        console.error("Failed to load dance groups at /api/admin/dance-groups", e)
-        try {
-            // Fallback to public endpoint if admin fails
-            const g = await apiFetch<DanceGroupDTO[]>("/api/dance-groups")
-            setGroups(g)
-        } catch (e2) {
-             console.error("Failed to load dance groups at /api/dance-groups", e2)
-             // Only set global error if we really can't load critical data? 
-             // Or just let it be empty and let user see "No groups" in dropdown
-        }
+        console.error("Failed to load dance groups", e)
       }
 
     } catch (err) {
@@ -105,16 +137,26 @@ export function LessonsPage() {
   useEffect(() => { fetchAll() }, [])
 
   const openCreate = () => { setEditingLesson(null); setForm(EMPTY_FORM); setFormError(null); setModalMode("create") }
-  const openEdit = (l: ScheduledLessonDTO) => {
-    setEditingLesson(l)
+  const openEdit = (rawLesson: ScheduledLessonDTO) => {
+    const lesson = rawLesson as LooseLesson
+    const teacher = resolveTeacher(lesson)
+    const group = resolveGroup(lesson)
+
+    setEditingLesson(rawLesson)
     setForm({
-      teacherId: l.teacher.id,
-      danceGroupId: l.danceGroup.id,
-      durationMinutes: l.durationMinutes,
-      isPrivate: l.isPrivate,
-      isPinned: l.isPinned,
-      timeslotId: l.timeslot?.id ?? "",
-      roomId: l.room?.id ?? "",
+      teacherId: teacher?.id ?? (typeof lesson.teacherId === "number" ? lesson.teacherId : ""),
+      danceGroupId:
+        group?.id ??
+        (typeof lesson.danceGroupId === "number"
+          ? lesson.danceGroupId
+          : typeof lesson.groupId === "number"
+            ? lesson.groupId
+            : ""),
+      durationMinutes: lesson.durationMinutes,
+      isPrivate: lesson.isPrivate,
+      isPinned: lesson.isPinned,
+      timeslotId: lesson.timeslot?.id ?? "",
+      roomId: lesson.room?.id ?? "",
     })
     setFormError(null); setModalMode("edit")
   }
@@ -138,6 +180,10 @@ export function LessonsPage() {
     const payload = buildPayload()
     if (!payload) { setFormError("Teacher and Dance Group are required."); return }
     if (form.durationMinutes < 1) { setFormError("Duration must be at least 1 minute."); return }
+    if (modalMode === "edit" && editingLesson && editingLesson.id <= 0) {
+      setFormError("Invalid lesson id. Please refresh lessons and try again.")
+      return
+    }
     setIsSaving(true); setFormError(null)
     try {
       if (modalMode === "create") await lessonApi.create(payload)
@@ -148,8 +194,12 @@ export function LessonsPage() {
     } finally { setIsSaving(false) }
   }
 
-  const handleDelete = async (lesson: ScheduledLessonDTO) => {
-    if (!window.confirm(`Delete lesson for group "${lesson.danceGroup.name}"?`)) return
+  const handleDelete = async (rawLesson: ScheduledLessonDTO) => {
+    const lesson = rawLesson as LooseLesson
+    const group = resolveGroup(lesson)
+    const groupName = group?.name ?? lesson.groupName ?? "Unknown group"
+
+    if (!window.confirm(`Delete lesson for group "${groupName}"?`)) return
     try { await lessonApi.delete(lesson.id); await fetchAll() }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete") }
   }
@@ -200,39 +250,54 @@ export function LessonsPage() {
                   <tr><td colSpan={9} className="h-24 text-center text-muted-foreground">Loading...</td></tr>
                 ) : lessons.length === 0 ? (
                   <tr><td colSpan={9} className="h-24 text-center text-muted-foreground">No lessons found.</td></tr>
-                ) : lessons.map(lesson => (
-                  <tr key={lesson.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-3 text-muted-foreground">{lesson.id}</td>
-                    <td className="p-3">
-                      <span className="font-medium" style={{ color: lesson.teacher.colorCode }}>
-                        {lesson.teacher.fullName}
-                      </span>
-                    </td>
-                    <td className="p-3 font-medium">{lesson.danceGroup.name}</td>
-                    <td className="p-3">
-                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", LEVEL_COLORS[lesson.danceGroup.danceLevel] ?? "bg-muted text-muted-foreground")}>
-                        {lesson.danceGroup.danceLevel}
-                      </span>
-                    </td>
-                    <td className="p-3">{lesson.durationMinutes}m</td>
-                    <td className="p-3">
-                      <div className="flex gap-1">
-                        {lesson.isPrivate && <span className="inline-flex items-center rounded-full bg-purple-500/20 text-purple-400 px-2 py-0.5 text-xs font-semibold">Private</span>}
-                        {lesson.isPinned && <span title="Pinned — solver won't move" className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.5 text-xs font-semibold"><Pin className="h-3 w-3" />Pinned</span>}
-                      </div>
-                    </td>
-                    <td className="p-3 font-mono text-xs text-muted-foreground">
-                      {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : "—"}
-                    </td>
-                    <td className="p-3 text-muted-foreground">{lesson.room?.name ?? "—"}</td>
-                    <td className="p-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(lesson)}><Pencil className="h-3.5 w-3.5 mr-1" />Edit</Button>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(lesson)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : lessons.map((rawLesson) => {
+                  const lesson = rawLesson as LooseLesson
+                  const teacher = resolveTeacher(lesson)
+                  const group = resolveGroup(lesson)
+                  const teacherName = teacher?.fullName ?? lesson.teacherName ?? "Unknown teacher"
+                  const teacherColor = teacher?.colorCode
+                  const groupName = group?.name ?? lesson.groupName ?? "Unknown group"
+                  const groupLevel = group?.danceLevel
+                  console.log(group)
+
+                  return (
+                    <tr key={lesson.id} className="border-b transition-colors hover:bg-muted/50">
+                      <td className="p-3 text-muted-foreground">{lesson.id}</td>
+                      <td className="p-3">
+                        <span className="font-medium" style={teacherColor ? { color: teacherColor } : undefined}>
+                          {teacherName}
+                        </span>
+                      </td>
+                      <td className="p-3 font-medium">{groupName}</td>
+                      <td className="p-3">
+                        {groupLevel ? (
+                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", LEVEL_COLORS[groupLevel] ?? "bg-muted text-muted-foreground")}>
+                            {groupLevel}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="p-3">{lesson.durationMinutes}m</td>
+                      <td className="p-3">
+                        <div className="flex gap-1">
+                          {lesson.isPrivate && <span className="inline-flex items-center rounded-full bg-purple-500/20 text-purple-400 px-2 py-0.5 text-xs font-semibold">Private</span>}
+                          {lesson.isPinned && <span title="Pinned — solver won't move" className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.5 text-xs font-semibold"><Pin className="h-3 w-3" />Pinned</span>}
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono text-xs text-muted-foreground">
+                        {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : "—"}
+                      </td>
+                      <td className="p-3 text-muted-foreground">{lesson.room?.name ?? "—"}</td>
+                      <td className="p-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(lesson)}><Pencil className="h-3.5 w-3.5 mr-1" />Edit</Button>
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(lesson)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
