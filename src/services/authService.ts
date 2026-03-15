@@ -42,6 +42,10 @@ class AuthService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
+      console.error('=== SERVER ERROR ===')
+      console.error('Status:', response.status)
+      console.error('Status Text:', response.statusText)
+      console.error('Error Data:', errorData)
       throw new Error(errorData?.message || `Request failed: ${response.statusText}`)
     }
 
@@ -59,15 +63,13 @@ class AuthService {
   }
 
   async register(data: RegisterRequest): Promise<User> {
-    const response = await this.request<{ user: User }>(
-      "/auth/register",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
+    return await this.request<User>(
+        "/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        }
     )
-
-    return response.user
   }
 
   async getCurrentUser(): Promise<User> {
