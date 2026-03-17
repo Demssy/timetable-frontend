@@ -26,10 +26,7 @@ export interface ScheduledEvent {
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-const TIME_SLOTS = [
-  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00",
-  "16:00", "17:00", "18:00", "19:00", "20:00",
-]
+
 
 const DAY_TO_INDEX: Record<string, number> = {
   MONDAY: 0, TUESDAY: 1, WEDNESDAY: 2, THURSDAY: 3, FRIDAY: 4, SATURDAY: 5, SUNDAY: 6,
@@ -150,6 +147,16 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     return Array.from(map.values())
   }, [events])
 
+  const timeBlocks = useMemo(() => {
+    const blocks = new Map<string, { start: string, end: string }>()
+    events.forEach(e => {
+      const key = `${e.startTime}-${e.endTime}`
+      if (!blocks.has(key)) blocks.set(key, { start: e.startTime, end: e.endTime })
+    })
+
+    return Array.from(blocks.values()).sort((a, b) => a.start.localeCompare(b.start))
+  }, [events])
+
   const goToPreviousWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, -1))
   const goToNextWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, 1))
   const goToCurrentWeek = () => setSelectedWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -162,17 +169,6 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     return filteredEvents.filter((event) => event.day === dayIndex)
   }
 
-  const getEventPosition = (event: ScheduledEvent) => {
-    const startHour = Number.parseInt(event.startTime.split(":")[0])
-    const endHour = Number.parseInt(event.endTime.split(":")[0])
-    const startMinutes = Number.parseInt(event.startTime.split(":")[1])
-    const endMinutes = Number.parseInt(event.endTime.split(":")[1])
-
-    const startOffset = (startHour - 9) * 64 + (startMinutes / 60) * 64
-    const duration = (endHour - startHour) * 64 + ((endMinutes - startMinutes) / 60) * 64
-
-    return { top: startOffset, height: Math.max(duration, 64) }
-  }
   return (
       <div className="space-y-6 select-none text-left">
         {/*  */}
@@ -289,78 +285,78 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
         </div>
       </div>
 
-      {/* Desktop View */}
-      <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''}`}>
-        <div className="min-w-[1000px]">
-          {/* Header */}
-          <div className="grid grid-cols-[80px_repeat(7,1fr)] border-b border-border">
-            <div className="p-3 text-xs font-mono uppercase tracking-wider text-muted-foreground">Time</div>
-            {DAYS.map((day) => (
-              <div key={day} className="border-l border-border p-3 text-center text-sm font-medium text-foreground">
-                {day}
-              </div>
-            ))}
-          </div>
+        {/* Desktop View (Table Layout) */}
+        <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''} pb-6`}>
+          <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+            <table className="w-full text-sm border-collapse min-w-[1000px]">
+              {/* Шапка с днями недели */}
+              <thead>
+              <tr className="bg-muted/30">
+                <th className="p-3 text-left text-muted-foreground font-medium border-b border-r border-border w-[100px]">
+                  Time
+                </th>
+                {DAYS.map((day) => (
+                    <th key={day} className="p-3 text-center text-foreground font-medium border-b border-r border-border min-w-[150px] last:border-r-0">
+                      {day}
+                    </th>
+                ))}
+              </tr>
+              </thead>
 
-          {/* Time Grid */}
-          <div className="grid grid-cols-[80px_repeat(7,1fr)]">
-            {/* Time Labels */}
-            <div className="relative">
-              {TIME_SLOTS.map((time) => (
-                  <div
-                      key={time}
+              {/* Тело таблицы с таймслотами */}
+              <tbody>
+              {timeBlocks.length > 0 ? (
+                  timeBlocks.map((block) => (
+                      <tr key={`${block.start}-${block.end}`} className="border-b border-border last:border-b-0">
 
-                      className="h-16 border-b border-border/50 pr-3 text-right text-xs font-mono text-muted-foreground"
-                  >
-                    {time}
-                  </div>
-              ))}
-            </div>
+                        {/*  */}
+                        <td className="p-3 border-r border-border text-muted-foreground font-mono text-xs align-top bg-muted/5">
+                          <div className="font-medium text-foreground">{block.start}</div>
+                          <div className="opacity-70">-{block.end}</div>
+                        </td>
 
-            {/* Day Columns */}
-            {DAYS.map((day, dayIndex) => (
-                <div key={day} className="relative border-l border-border">
-                  {/* Grid lines */}
-                  {TIME_SLOTS.map((time) => (
+                        {/* Колонки дней */}
+                        {DAYS.map((day, dayIndex) => {
+                          // Ищем уроки для конкретного дня и конкретного таймслота
+                          const cellEvents = getEventsForDay(dayIndex).filter(
+                              (e) => e.startTime === block.start && e.endTime === block.end
+                          )
 
-                      <div key={time} className="h-16 border-b border-border/30" />
-                  ))}
-                {/* Events */}
-                {Object.values(
-                    getEventsForDay(dayIndex).reduce((acc, event) => {
-                      const key = `${event.startTime}-${event.endTime}`
-                      if (!acc[key]) acc[key] = []
-                      acc[key].push(event)
-                      return acc
-                    }, {} as Record<string, ScheduledEvent[]>)
-                ).map((eventGroup) => {
-                  const firstEvent = eventGroup[0]
-                  const { top, height } = getEventPosition(firstEvent)
-
-                  return (
-                      <div
-                          key={`group-${firstEvent.startTime}`}
-                          className="absolute left-1 right-1 flex gap-1"
-                          style={{ top: `${top}px`, height: `${height}px` }}
-                      >
-                        {eventGroup.map((event) => (
-                            <div key={event.id} className="flex-1 min-w-0 h-full">
-                              <EventCard
-                                  event={event}
-                                  onClick={() => setSelectedEvent(event)}
-                                  isSelected={selectedEvent?.id === event.id}
-                                  variant="grid"
-                              />
-                            </div>
-                        ))}
-                      </div>
-                  )
-                })}
-              </div>
-            ))}
+                          return (
+                              <td key={day} className="p-2 border-r border-border last:border-r-0 align-top">
+                                {cellEvents.length > 0 ? (
+                                    // Если в одном слоте несколько уроков (например, приватные), они встанут друг под другом
+                                    <div className="flex flex-col gap-2">
+                                      {cellEvents.map((event) => (
+                                          <EventCard
+                                              key={event.id}
+                                              event={event}
+                                              onClick={() => setSelectedEvent(event)}
+                                              isSelected={selectedEvent?.id === event.id}
+                                              variant="grid"
+                                          />
+                                      ))}
+                                    </div>
+                                ) : (
+                                    // Пустая ячейка
+                                    <div className="min-h-20" />
+                                )}
+                              </td>
+                          )
+                        })}
+                      </tr>
+                  ))
+              ) : (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                      No classes scheduled for this week.
+                    </td>
+                  </tr>
+              )}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
         {/* Event Details Modal */}
         {selectedEvent && (
