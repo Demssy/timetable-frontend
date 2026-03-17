@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ChevronRight, AlertTriangle, Pin } from "lucide-react"
+import { ChevronRight, AlertTriangle, Loader2, Pin } from "lucide-react"
 import { solverApi } from "@/api/solverApi"
 import type { ScheduleSolutionResponse, ScheduledLessonDTO, TimeslotDTO } from "@/types/schedule"
-import { DayOfWeek } from "@/types/enums"
+import { DayOfWeek, SolverStatus } from "@/types/enums"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { useSolverPolling } from "@/hooks/useSolverPolling"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,11 +72,11 @@ export function TimetableViewPage() {
   const [solution, setSolution] = useState<ScheduleSolutionResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { status, startPolling, stopPolling } = useSolverPolling(scheduleId)
+  const isSolving = status === SolverStatus.SOLVING_ACTIVE || status === SolverStatus.SOLVING_SCHEDULED
 
   const fetchSolution = useCallback(async () => {
     if (!scheduleId) return
-    setIsLoading(true)
-    setError(null)
     try {
       const data = await solverApi.getSolution(scheduleId)
       setSolution(data)
@@ -88,7 +89,30 @@ export function TimetableViewPage() {
 
   useEffect(() => {
     fetchSolution()
-  }, [fetchSolution])
+    startPolling()
+
+    return () => {
+      stopPolling()
+    }
+    // Intentionally run only once on mount to avoid request loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined
+
+    if (status === SolverStatus.SOLVING_ACTIVE || status === SolverStatus.SOLVING_SCHEDULED) {
+      intervalId = setInterval(() => {
+        fetchSolution()
+      }, 2000)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [status, fetchSolution])
 
   if (isLoading) {
     return (
@@ -161,6 +185,12 @@ export function TimetableViewPage() {
 
       {/* Score banner */}
       <div className="flex flex-wrap gap-3 items-center">
+        {isSolving && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {status === SolverStatus.SOLVING_SCHEDULED ? "Solving scheduled..." : "Solving in progress..."}
+          </div>
+        )}
         {solution.score && (
           <div className={cn(
             "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium",

@@ -1,175 +1,162 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { addWeeks, endOfWeek, format, isWithinInterval, parseISO, startOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { EventCard } from "./event-card.tsx"
-import { ClassLegend } from "./class-legend.tsx"
+import { Button } from "@/components/ui/button"
+import { scheduleApi } from "@/api/scheduleApi"
+import { solverApi } from "@/api/solverApi"
+import type { ScheduleMetadataDTO, ScheduledLessonDTO } from "@/types/schedule"
+import { MapPin, Clock, CalendarDays, X } from "lucide-react"
 
-export type DanceClass = "ballet" | "hiphop" | "contemporary" | "jazz" | "salsa"
 
 export interface ScheduledEvent {
   id: string
   title: string
   instructor: string
+  instructorId: number
+  instructorColor: string
   room: string
   startTime: string
   endTime: string
   day: number
-  type: DanceClass
+  level?: string
+  isPrivate?: boolean
+  isPinned?: boolean
+  targetAgeRange?: string | null
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 const TIME_SLOTS = [
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-  "19:00",
-  "20:00",
+  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00",
+  "16:00", "17:00", "18:00", "19:00", "20:00",
 ]
 
-const SAMPLE_EVENTS: ScheduledEvent[] = [
-  {
-    id: "1",
-    title: "Ballet Basics",
-    instructor: "Maria Santos",
-    room: "Studio A",
-    startTime: "09:00",
-    endTime: "10:30",
-    day: 0,
-    type: "ballet",
-  },
-  {
-    id: "2",
-    title: "Hip Hop Crew",
-    instructor: "Marcus Chen",
-    room: "Studio B",
-    startTime: "10:00",
-    endTime: "11:30",
-    day: 0,
-    type: "hiphop",
-  },
-  {
-    id: "3",
-    title: "Contemporary Flow",
-    instructor: "Elena Volkov",
-    room: "Studio A",
-    startTime: "14:00",
-    endTime: "15:30",
-    day: 0,
-    type: "contemporary",
-  },
-  {
-    id: "4",
-    title: "Jazz Fusion",
-    instructor: "James Wilson",
-    room: "Studio C",
-    startTime: "11:00",
-    endTime: "12:00",
-    day: 1,
-    type: "jazz",
-  },
-  {
-    id: "5",
-    title: "Salsa Beginners",
-    instructor: "Carlos Rivera",
-    room: "Studio B",
-    startTime: "18:00",
-    endTime: "19:30",
-    day: 1,
-    type: "salsa",
-  },
-  {
-    id: "6",
-    title: "Ballet Intermediate",
-    instructor: "Maria Santos",
-    room: "Studio A",
-    startTime: "09:00",
-    endTime: "10:30",
-    day: 2,
-    type: "ballet",
-  },
-  {
-    id: "7",
-    title: "Hip Hop Foundations",
-    instructor: "Marcus Chen",
-    room: "Studio B",
-    startTime: "15:00",
-    endTime: "16:30",
-    day: 2,
-    type: "hiphop",
-  },
-  {
-    id: "8",
-    title: "Contemporary Expression",
-    instructor: "Elena Volkov",
-    room: "Studio A",
-    startTime: "17:00",
-    endTime: "18:30",
-    day: 3,
-    type: "contemporary",
-  },
-  {
-    id: "9",
-    title: "Jazz Technique",
-    instructor: "James Wilson",
-    room: "Studio C",
-    startTime: "10:00",
-    endTime: "11:00",
-    day: 3,
-    type: "jazz",
-  },
-  {
-    id: "10",
-    title: "Salsa Intermediate",
-    instructor: "Carlos Rivera",
-    room: "Studio B",
-    startTime: "19:00",
-    endTime: "20:30",
-    day: 4,
-    type: "salsa",
-  },
-  {
-    id: "11",
-    title: "Ballet Advanced",
-    instructor: "Maria Santos",
-    room: "Studio A",
-    startTime: "10:00",
-    endTime: "12:00",
-    day: 5,
-    type: "ballet",
-  },
-  {
-    id: "12",
-    title: "Hip Hop Battle Prep",
-    instructor: "Marcus Chen",
-    room: "Studio B",
-    startTime: "14:00",
-    endTime: "16:00",
-    day: 5,
-    type: "hiphop",
-  },
-  {
-    id: "13",
-    title: "Open Contemporary",
-    instructor: "Elena Volkov",
-    room: "Studio A",
-    startTime: "11:00",
-    endTime: "12:30",
-    day: 6,
-    type: "contemporary",
-  },
-]
+const DAY_TO_INDEX: Record<string, number> = {
+  MONDAY: 0, TUESDAY: 1, WEDNESDAY: 2, THURSDAY: 3, FRIDAY: 4, SATURDAY: 5, SUNDAY: 6,
+}
+
+function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
+  if (!lesson.timeslot || !lesson.room) return null
+
+  const day = DAY_TO_INDEX[lesson.timeslot.dayOfWeek]
+  if (day === undefined) return null
+
+  return {
+    id: lesson.id.toString(),
+    title: lesson.danceGroup.name,
+    instructor: lesson.teacher.fullName,
+    instructorId: lesson.teacher.id,
+    instructorColor: lesson.teacher.colorCode || "#9ca3af",
+    room: lesson.room.name,
+    startTime: lesson.timeslot.startTime.slice(0, 5),
+    endTime: lesson.timeslot.endTime.slice(0, 5),
+    day,
+    level: lesson.danceGroup.danceLevel,
+    isPrivate: lesson.isPrivate,
+    isPinned: lesson.isPinned,
+    targetAgeRange: lesson.danceGroup.targetAgeRange,
+  }
+}
+
+function formatWeekRange(weekStart: Date) {
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  return `${format(weekStart, "dd MMM")} - ${format(weekEnd, "dd MMM yyyy")}`
+}
+
+function findScheduleForWeek(weekStart: Date, schedules: ScheduleMetadataDTO[]) {
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  return schedules.find((schedule) => {
+    const scheduleStart = parseISO(schedule.validFrom)
+    const scheduleEnd = parseISO(schedule.validTo)
+    return (
+      isWithinInterval(weekStart, { start: scheduleStart, end: scheduleEnd }) ||
+      isWithinInterval(weekEnd, { start: scheduleStart, end: scheduleEnd })
+    )
+  })
+}
 
 export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null)
-  const [filter, setFilter] = useState<DanceClass | "all">("all")
 
-  const filteredEvents = filter === "all" ? SAMPLE_EVENTS : SAMPLE_EVENTS.filter((event) => event.type === filter)
+
+  const [filter, setFilter] = useState<number | "all">("all")
+  const [events, setEvents] = useState<ScheduledEvent[]>([])
+  const [activeSchedule, setActiveSchedule] = useState<ScheduleMetadataDTO | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadWeek() {
+      setIsLoading(true)
+      setError(null)
+      setSelectedEvent(null)
+
+      try {
+        const schedules = await scheduleApi.getAll()
+        const scheduleForWeek = findScheduleForWeek(selectedWeekStart, schedules)
+
+        if (!scheduleForWeek) {
+          if (!cancelled) {
+            setEvents([])
+            setActiveSchedule(null)
+          }
+          return
+        }
+
+        const solution = await solverApi.getSolution(scheduleForWeek.id)
+        const mappedEvents = solution.lessons
+          .map((lesson) => mapLessonToEvent(lesson))
+          .filter((event): event is ScheduledEvent => event !== null)
+
+        if (!cancelled) {
+          setEvents(mappedEvents)
+          setActiveSchedule(scheduleForWeek)
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          setError(fetchError instanceof Error ? fetchError.message : "Failed to load schedule")
+          setEvents([])
+          setActiveSchedule(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadWeek()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedWeekStart])
+
+  const filteredEvents = useMemo(
+      () => (filter === "all" ? events : events.filter((event) => event.instructorId === filter)),
+      [events, filter],
+  )
+
+  const uniqueTeachers = useMemo(() => {
+    const map = new Map<number, { id: number, name: string, color: string }>()
+    events.forEach(e => {
+      if (!map.has(e.instructorId)) {
+        map.set(e.instructorId, { id: e.instructorId, name: e.instructor, color: e.instructorColor })
+      }
+    })
+    return Array.from(map.values())
+  }, [events])
+
+  const goToPreviousWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, -1))
+  const goToNextWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, 1))
+  const goToCurrentWeek = () => setSelectedWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const handleWeekInputChange = (value: string) => {
+    if (!value) return
+    setSelectedWeekStart(startOfWeek(parseISO(value), { weekStartsOn: 1 }))
+  }
 
   const getEventsForDay = (dayIndex: number) => {
     return filteredEvents.filter((event) => event.day === dayIndex)
@@ -181,18 +168,100 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     const startMinutes = Number.parseInt(event.startTime.split(":")[1])
     const endMinutes = Number.parseInt(event.endTime.split(":")[1])
 
-    const startOffset = (startHour - 9) * 48 + (startMinutes / 60) * 48
-    const duration = (endHour - startHour) * 48 + ((endMinutes - startMinutes) / 60) * 48
+    const startOffset = (startHour - 9) * 64 + (startMinutes / 60) * 64
+    const duration = (endHour - startHour) * 64 + ((endMinutes - startMinutes) / 60) * 64
 
-    return { top: startOffset, height: Math.max(duration, 48) }
+    return { top: startOffset, height: Math.max(duration, 64) }
   }
-
   return (
-    <div className="space-y-6 select-none">
-      <ClassLegend activeFilter={filter} onFilterChange={setFilter} />
+      <div className="space-y-6 select-none text-left">
+        {/*  */}
+        <div className="flex flex-col xl:flex-row items-center justify-between gap-4 rounded-lg border border-border bg-card p-3">
+
+          {/*  */}
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
+            <div className="shrink-0">
+              <p className="text-sm font-semibold text-card-foreground">Week: {formatWeekRange(selectedWeekStart)}</p>
+              <p className="text-xs text-muted-foreground">
+                {activeSchedule
+                    ? `Schedule: ${activeSchedule.name}`
+                    : "No schedule is available"}
+              </p>
+            </div>
+            {/*  */}
+            <div className="hidden md:block h-8 w-px bg-border"></div>
+            {/* Вертикальный разделитель */}
+            <div className="hidden md:block h-8 w-px bg-border"></div>
+
+            {/* ДИНАМИЧЕСКАЯ ЛЕГЕНДА УЧИТЕЛЕЙ */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                  onClick={() => setFilter("all")}
+                  className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                      filter === "all" ? "bg-primary text-primary-foreground border-primary" : "border-border bg-card text-muted-foreground hover:bg-muted"
+                  )}
+              >
+                All Teachers
+              </button>
+              {uniqueTeachers.map(t => (
+                  <button
+                      key={t.id}
+                      onClick={() => setFilter(t.id)}
+                      className={cn(
+                          "rounded-full border px-3 py-1 text-xs font-semibold transition-colors flex items-center gap-1.5",
+                          filter === t.id ? "border-transparent shadow-sm" : "border-border bg-card hover:bg-muted text-muted-foreground"
+                      )}
+                      // Красим кнопку в цвет учителя, если она выбрана
+                      style={filter === t.id ? { backgroundColor: t.color, color: "#fff" } : {}}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }}></span>
+                    {t.name}
+                  </button>
+              ))}
+            </div>
+          </div>
+
+          {/* right side */}
+          <div className="flex flex-wrap items-center justify-center gap-2 w-full xl:w-auto">
+            <Button type="button" variant="outline" size="sm" onClick={goToPreviousWeek}>
+              Prev week
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={goToCurrentWeek}>
+              Current week
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={goToNextWeek}>
+              Next week
+            </Button>
+            <input
+                type="date"
+                className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                value={format(selectedWeekStart, "yyyy-MM-dd")}
+                onChange={(event) => handleWeekInputChange(event.target.value)}
+            />
+          </div>
+        </div>
+
+        {isLoading && (
+            <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground text-center">
+              Loading timetable...
+            </div>
+        )}
+
+      {!isLoading && error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {!isLoading && !error && filteredEvents.length === 0 && (
+        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+          No classes planned for this week.
+        </div>
+      )}
 
       {/* Mobile View */}
-      <div className={`block ${mobileOnly ? '' : 'lg:hidden'}`}>
+      <div className={`block ${mobileOnly ? '' : 'lg:hidden'} ${isLoading || error ? 'hidden' : ''}`}>
         <div className="space-y-4">
           {DAYS.map((day, dayIndex) => {
             const dayEvents = getEventsForDay(dayIndex)
@@ -221,7 +290,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
       </div>
 
       {/* Desktop View */}
-      <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto`}>
+      <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''}`}>
         <div className="min-w-[1000px]">
           {/* Header */}
           <div className="grid grid-cols-[80px_repeat(7,1fr)] border-b border-border">
@@ -238,39 +307,53 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
             {/* Time Labels */}
             <div className="relative">
               {TIME_SLOTS.map((time) => (
-                <div
-                  key={time}
-                  className="h-12 border-b border-border/50 pr-3 text-right text-xs font-mono text-muted-foreground"
-                >
-                  {time}
-                </div>
+                  <div
+                      key={time}
+
+                      className="h-16 border-b border-border/50 pr-3 text-right text-xs font-mono text-muted-foreground"
+                  >
+                    {time}
+                  </div>
               ))}
             </div>
 
             {/* Day Columns */}
             {DAYS.map((day, dayIndex) => (
-              <div key={day} className="relative border-l border-border">
-                {/* Grid lines */}
-                {TIME_SLOTS.map((time) => (
-                  <div key={time} className="h-12 border-b border-border/30" />
-                ))}
+                <div key={day} className="relative border-l border-border">
+                  {/* Grid lines */}
+                  {TIME_SLOTS.map((time) => (
 
+                      <div key={time} className="h-16 border-b border-border/30" />
+                  ))}
                 {/* Events */}
-                {getEventsForDay(dayIndex).map((event) => {
-                  const { top, height } = getEventPosition(event)
+                {Object.values(
+                    getEventsForDay(dayIndex).reduce((acc, event) => {
+                      const key = `${event.startTime}-${event.endTime}`
+                      if (!acc[key]) acc[key] = []
+                      acc[key].push(event)
+                      return acc
+                    }, {} as Record<string, ScheduledEvent[]>)
+                ).map((eventGroup) => {
+                  const firstEvent = eventGroup[0]
+                  const { top, height } = getEventPosition(firstEvent)
+
                   return (
-                    <div
-                      key={event.id}
-                      className="absolute left-1 right-1"
-                      style={{ top: `${top}px`, height: `${height}px` }}
-                    >
-                      <EventCard
-                        event={event}
-                        onClick={() => setSelectedEvent(event)}
-                        isSelected={selectedEvent?.id === event.id}
-                        variant="grid"
-                      />
-                    </div>
+                      <div
+                          key={`group-${firstEvent.startTime}`}
+                          className="absolute left-1 right-1 flex gap-1"
+                          style={{ top: `${top}px`, height: `${height}px` }}
+                      >
+                        {eventGroup.map((event) => (
+                            <div key={event.id} className="flex-1 min-w-0 h-full">
+                              <EventCard
+                                  event={event}
+                                  onClick={() => setSelectedEvent(event)}
+                                  isSelected={selectedEvent?.id === event.id}
+                                  variant="grid"
+                              />
+                            </div>
+                        ))}
+                      </div>
                   )
                 })}
               </div>
@@ -279,99 +362,100 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
         </div>
       </div>
 
-      {/* Event Details Modal */}
-      {selectedEvent && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-          onClick={() => setSelectedEvent(null)}
-        >
-          <div
-            className="mx-4 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <span
-                  className={cn(
-                    "inline-block rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wider",
-                    selectedEvent.type === "ballet" && "bg-ballet/20 text-ballet",
-                    selectedEvent.type === "hiphop" && "bg-hiphop/20 text-hiphop",
-                    selectedEvent.type === "contemporary" && "bg-contemporary/20 text-contemporary",
-                    selectedEvent.type === "jazz" && "bg-jazz/20 text-jazz",
-                    selectedEvent.type === "salsa" && "bg-salsa/20 text-salsa",
-                  )}
-                >
-                  {selectedEvent.type.replace("hiphop", "hip hop")}
-                </span>
-                <h2 className="mt-2 text-xl font-semibold text-card-foreground">{selectedEvent.title}</h2>
-              </div>
-              <button
+        {/* Event Details Modal */}
+        {selectedEvent && (
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
                 onClick={() => setSelectedEvent(null)}
-                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <div
+                  className="w-full max-w-sm overflow-hidden rounded-xl border border-border/50 bg-card shadow-2xl animate-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+                {/*  */}
+                <div
+                    className="relative px-6 pt-6 pb-4"
+                    style={{ backgroundColor: `${selectedEvent.instructorColor}1A` }} // 10% opacity
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                  <span
+                      className="inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest"
+                      style={{
+                        backgroundColor: `${selectedEvent.instructorColor}33`, // 20% opacity
+                        color: selectedEvent.instructorColor
+                      }}
+                  >
+                    {selectedEvent.instructor}
+                  </span>
+                      {selectedEvent.level && (
+                          <span className="ml-2 inline-block rounded-full bg-background/50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-foreground">
+                      {selectedEvent.level}
+                    </span>
+                      )}
+                      {/*  */}
+                      {selectedEvent.targetAgeRange && (
+                          <span className="ml-2 inline-block rounded-full border border-border bg-background/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-foreground">
+                      {selectedEvent.targetAgeRange}
+                    </span>
+                      )}
+                      <h2 className="mt-3 text-2xl font-bold text-foreground leading-tight">{selectedEvent.title}</h2>
+                    </div>
+                    <button
+                        onClick={() => setSelectedEvent(null)}
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-background/50 hover:text-foreground transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
 
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <span>
-                  {selectedEvent.startTime} - {selectedEvent.endTime}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                  />
-                </svg>
-                <span>{selectedEvent.instructor}</span>
-              </div>
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-                <span>{selectedEvent.room}</span>
-              </div>
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <span>{DAYS[selectedEvent.day]}</span>
+                {/*  */}
+                <div className="p-6 space-y-5">
+
+                  {/*  */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
+                  <span className="text-sm font-bold text-muted-foreground">
+                    {selectedEvent.instructor.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{selectedEvent.instructor}</p>
+                      <p className="text-xs text-muted-foreground">Instructor</p>
+                    </div>
+                  </div>
+
+                  <div className="h-px w-full bg-border/50" /> {/* Разделитель */}
+
+                  {/*  */}
+                  <div className="space-y-3.5">
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
+                        <CalendarDays className="h-4 w-4" />
+                      </div>
+                      <span className="font-medium">{DAYS[selectedEvent.day]}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <span className="font-medium">{selectedEvent.startTime} - {selectedEvent.endTime}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-sm text-foreground">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <span className="font-medium">{selectedEvent.room}</span>
+                    </div>
+                  </div>
+
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+        )}
     </div>
   )
 }
