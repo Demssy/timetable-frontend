@@ -1,12 +1,14 @@
+// src_front/components/event-card.tsx
+
 import { cn } from "@/lib/utils"
-import { Pin, MapPin } from "lucide-react"
+import { Pin, MapPin, Clock } from "lucide-react"
 import type { ScheduledEvent } from "./weekly-timetable.tsx"
 
 interface EventCardProps {
   event: ScheduledEvent
   onClick: () => void
   isSelected: boolean
-  variant: "mobile" | "grid"
+  variant: "mobile" | "grid" | "horizontal" // <-- Добавили horizontal
 }
 
 export function EventCard({ event, onClick, isSelected, variant }: EventCardProps) {
@@ -15,7 +17,7 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
     backgroundColor: `${event.instructorColor}15`, // Прозрачность 8% для фона
   }
 
-
+  // --- МОБИЛЬНАЯ ВЕРСИЯ ---
   if (variant === "mobile") {
     return (
         <button
@@ -51,7 +53,50 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
     )
   }
 
+  // --- ДЕСКТОП: ГОРИЗОНТАЛЬНЫЙ ТАЙМЛАЙН ---
+  if (variant === "horizontal") {
+    return (
+        <button
+            onClick={onClick}
+            className={cn(
+                "h-full w-full rounded border border-border/30 border-l-4 p-2 text-left transition-all cursor-pointer flex items-center justify-between gap-2 overflow-hidden",
+                isSelected && "ring-2 ring-ring shadow-md hover:brightness-110"
+            )}
+            style={dynamicStyle}
+        >
+          <div className="flex flex-col justify-center min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-[10px] truncate opacity-80 text-foreground">
+              {event.instructor}
+            </span>
+              {event.isPrivate && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[9px] font-bold">P</span>}
+              {event.isPinned && <Pin className="h-3 w-3 text-amber-400" />}
+            </div>
 
+            <span className="font-bold leading-tight text-xs sm:text-sm truncate drop-shadow-sm mt-0.5" style={{ color: event.instructorColor }}>
+            {event.title}
+          </span>
+
+            {event.targetAgeRange && (
+                <span className="inline-flex w-fit rounded bg-background/50 border border-border/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-foreground mt-1">
+              {event.targetAgeRange}
+            </span>
+            )}
+          </div>
+
+          <div className="hidden xl:flex flex-col items-end shrink-0 gap-1 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1.5 truncate">
+            <MapPin className="h-3 w-3 opacity-70" /> {event.room}
+          </span>
+            <span className="flex items-center gap-1.5 truncate opacity-80">
+            <Clock className="h-3 w-3" /> {event.startTime}-{event.endTime}
+          </span>
+          </div>
+        </button>
+    )
+  }
+
+  // --- ДЕСКТОП: ЯЧЕЙКА ТАБЛИЦЫ (По умолчанию) ---
   return (
       <button
           onClick={onClick}
@@ -62,32 +107,29 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
           style={dynamicStyle}
       >
         <div className="flex items-start justify-between gap-1 w-full">
-          {/*  */}
           <span className="font-bold leading-tight text-sm text-foreground">
-          {event.title}
-        </span>
+            {event.title}
+          </span>
           <div className="flex gap-0.5 shrink-0">
             {event.isPrivate && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[10px] font-bold">P</span>}
             {event.isPinned && <Pin className="h-3 w-3 text-amber-400" />}
           </div>
         </div>
 
-        {/*  */}
         {event.targetAgeRange && (
             <span className="inline-flex w-fit rounded bg-background/80 border border-border/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-foreground">
           {event.targetAgeRange}
         </span>
         )}
 
-        {/*  */}
         <span className="font-semibold text-xs mt-0.5" style={{ color: event.instructorColor }}>
-        {event.instructor}
-      </span>
+          {event.instructor}
+        </span>
 
         <div className="mt-auto flex flex-col gap-0.5 text-xs text-muted-foreground pt-1">
-        <span className="flex items-center gap-1.5 truncate">
-          <MapPin className="h-3 w-3 opacity-70" /> {event.room}
-        </span>
+          <span className="flex items-center gap-1.5 truncate">
+            <MapPin className="h-3 w-3 opacity-70" /> {event.room}
+          </span>
         </div>
       </button>
   )

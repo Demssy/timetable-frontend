@@ -23,13 +23,14 @@ interface FormState {
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
+  isActive: boolean
   timeslotId: number | ""
   roomId: number | ""
 }
 
 const EMPTY_FORM: FormState = {
   teacherId: "", danceGroupId: "", durationMinutes: 60,
-  isPrivate: false, isPinned: false, timeslotId: "", roomId: "",
+  isPrivate: false, isPinned: false, isActive: true, timeslotId: "", roomId: "",
 }
 
 const fmtTime = (t: string) => t.slice(0, 5)
@@ -56,6 +57,7 @@ export function LessonsPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set())
 
   type LooseLesson = ScheduledLessonDTO & {
     teacher?: ScheduledLessonDTO["teacher"] | null
@@ -155,6 +157,7 @@ export function LessonsPage() {
       durationMinutes: lesson.durationMinutes,
       isPrivate: lesson.isPrivate,
       isPinned: lesson.isPinned,
+      isActive: lesson.isActive,
       timeslotId: lesson.timeslot?.id ?? "",
       roomId: lesson.room?.id ?? "",
     })
@@ -170,8 +173,27 @@ export function LessonsPage() {
       durationMinutes: form.durationMinutes,
       isPrivate: form.isPrivate,
       isPinned: form.isPinned,
+      isActive: form.isActive,
       timeslotId: form.timeslotId !== "" ? Number(form.timeslotId) : null,
       roomId: form.roomId !== "" ? Number(form.roomId) : null,
+    }
+  }
+
+  const handleToggleActive = async (lessonId: number) => {
+    setError(null)
+    setTogglingIds((prev) => new Set(prev).add(lessonId))
+
+    try {
+      const updatedLesson = await lessonApi.toggleActive(lessonId)
+      setLessons((prev) => prev.map((lesson) => (lesson.id === lessonId ? updatedLesson : lesson)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle lesson active status")
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(lessonId)
+        return next
+      })
     }
   }
 
@@ -242,14 +264,15 @@ export function LessonsPage() {
                   <th className="h-10 px-3 font-medium">Flags</th>
                   <th className="h-10 px-3 font-medium">Timeslot</th>
                   <th className="h-10 px-3 font-medium">Room</th>
+                  <th className="h-10 px-3 font-medium">Active</th>
                   <th className="h-10 px-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} className="h-24 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={10} className="h-24 text-center text-muted-foreground">Loading...</td></tr>
                 ) : lessons.length === 0 ? (
-                  <tr><td colSpan={9} className="h-24 text-center text-muted-foreground">No lessons found.</td></tr>
+                  <tr><td colSpan={10} className="h-24 text-center text-muted-foreground">No lessons found.</td></tr>
                 ) : lessons.map((rawLesson) => {
                   const lesson = rawLesson as LooseLesson
                   const teacher = resolveTeacher(lesson)
@@ -289,6 +312,16 @@ export function LessonsPage() {
                         {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : "—"}
                       </td>
                       <td className="p-3 text-muted-foreground">{lesson.room?.name ?? "—"}</td>
+                      <td className="p-3">
+                        <div className="flex items-center justify-center">
+                          <Checkbox
+                            checked={lesson.isActive}
+                            disabled={togglingIds.has(lesson.id)}
+                            onCheckedChange={() => handleToggleActive(lesson.id)}
+                            aria-label={`Toggle lesson ${lesson.id} active status`}
+                          />
+                        </div>
+                      </td>
                       <td className="p-3 text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => openEdit(lesson)}><Pencil className="h-3.5 w-3.5 mr-1" />Edit</Button>
@@ -337,7 +370,7 @@ export function LessonsPage() {
                   <Input type="number" min={15} step={15} value={form.durationMinutes} onChange={e => setForm(p => ({ ...p, durationMinutes: Number(e.target.value) }))} required />
                 </div>
 
-                <div className="flex gap-6">
+                <div className="flex flex-wrap gap-6">
                   <div className="flex items-center gap-2">
                     <Checkbox id="isPrivate" checked={form.isPrivate} onCheckedChange={val => setForm(p => ({ ...p, isPrivate: val === true }))} />
                     <Label htmlFor="isPrivate">Private lesson</Label>
@@ -345,6 +378,10 @@ export function LessonsPage() {
                   <div className="flex items-center gap-2">
                     <Checkbox id="isPinned" checked={form.isPinned} onCheckedChange={val => setForm(p => ({ ...p, isPinned: val === true }))} />
                     <Label htmlFor="isPinned">📌 Pin (solver won't move)</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="isActive" checked={form.isActive} onCheckedChange={val => setForm(p => ({ ...p, isActive: val === true }))} />
+                    <Label htmlFor="isActive">Active Lesson (Include in schedule)</Label>
                   </div>
                 </div>
 

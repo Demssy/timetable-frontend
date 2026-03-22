@@ -50,6 +50,7 @@ export interface ScheduledLessonDTO {
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
+  isActive: boolean
   timeslot: TimeslotDTO | null
   room: RoomDTO | null
 }
@@ -62,6 +63,7 @@ export interface CreateLessonRequest {
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
+  isActive: boolean
   timeslotId?: number | null
   roomId?: number | null
 }

@@ -6,6 +6,7 @@ const BASE = "/api/admin/lessons"
 
 type RawLesson = Partial<ScheduledLessonDTO> & {
   lessonId?: number
+  isActive?: boolean
   teacherId?: number
   teacherName?: string
   teacherFullName?: string
@@ -61,6 +62,7 @@ function normalizeLesson(raw: RawLesson): ScheduledLessonDTO {
     durationMinutes: raw.durationMinutes ?? 60,
     isPrivate: raw.isPrivate ?? false,
     isPinned: raw.isPinned ?? false,
+    isActive: raw.isActive ?? true,
     timeslot: raw.timeslot ?? null,
     room: raw.room ?? null,
   }
@@ -80,6 +82,9 @@ export const lessonApi = {
 
   update: async (id: number, data: CreateLessonRequest) =>
     normalizeLesson(await apiFetch<RawLesson>(`${BASE}/${id}`, { method: "PUT", body: JSON.stringify(data) })),
+
+    toggleActive: async (id: number) =>
+        normalizeLesson(await apiFetch<RawLesson>(`/api/lessons/${id}/toggle-active`, { method: "PUT" })),
 
   delete: (id: number) => apiFetch<void>(`${BASE}/${id}`, { method: "DELETE" }),
 }
