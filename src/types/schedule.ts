@@ -25,6 +25,16 @@ export interface TeacherSummary {
   qualifiedStyles: string[]
 }
 
+/** Mirrors backend StudentResponse.java — embedded in private lesson DTOs. */
+export interface StudentResponse {
+  id: number
+  email: string
+  fullName: string
+  birthDate: string           // ISO date: "YYYY-MM-DD"
+  danceLevel: DanceLevel | null
+  parentContact: string | null
+}
+
 export interface DanceGroupDTO {
   id: number
   name: string
@@ -34,6 +44,7 @@ export interface DanceGroupDTO {
   minSize: number
   targetAgeRange: string | null
 }
+
 
 export interface UpsertDanceGroupRequest {
   name: string
@@ -46,7 +57,10 @@ export interface UpsertDanceGroupRequest {
 export interface ScheduledLessonDTO {
   id: number
   teacher: TeacherSummary
-  danceGroup: DanceGroupDTO
+  /** null for private lessons (student-based). */
+  danceGroup: DanceGroupDTO | null
+  /** null for group lessons. */
+  student: StudentResponse | null
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
@@ -59,7 +73,10 @@ export interface ScheduledLessonDTO {
 
 export interface CreateLessonRequest {
   teacherId: number
-  danceGroupId: number
+  /** Required for group lessons; null for private lessons. */
+  danceGroupId?: number | null
+  /** Required for private lessons; null for group lessons. */
+  studentId?: number | null
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
@@ -84,7 +101,7 @@ export interface ScheduleMetadataDTO {
   validFrom: string   // "YYYY-MM-DD"
   validTo: string     // "YYYY-MM-DD"
   createdAt?: string
-  status?: ScheduleStatus
+  status: ScheduleStatus
 }
 
 export interface CreateScheduleRequest {

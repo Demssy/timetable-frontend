@@ -2,11 +2,11 @@
 // Must be kept in sync with Java enums
 
 export const DanceLevel = {
-  BEGINNER: "BEGINNER",
-  ELEMENTARY: "ELEMENTARY",
-  INTERMEDIATE: "INTERMEDIATE",
-  ADVANCED: "ADVANCED",
-  PROFESSIONAL: "PROFESSIONAL"
+  BEGINNER:         "BEGINNER",
+  ELEMENTARY:       "ELEMENTARY",
+  PRE_INTERMEDIATE: "PRE_INTERMEDIATE",
+  INTERMEDIATE:     "INTERMEDIATE",
+  ADVANCED:         "ADVANCED",
 } as const
 
 export type DanceLevel = typeof DanceLevel[keyof typeof DanceLevel]

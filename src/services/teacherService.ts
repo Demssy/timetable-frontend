@@ -4,6 +4,7 @@ import type {
   UpdateTeacherRequest,
   DanceStyleDTO,
 } from "@/types/teacher"
+import type { StudentResponse, WeeklyAvailability as WeeklyAvailabilityDTO } from "@/types/user"
 
 const API_BASE = "/api/teachers"
 const LEGACY_API_BASE = "/api/admin/teachers"
@@ -87,6 +88,26 @@ class TeacherService {
     await this.requestWithLegacyFallback<void>(`${API_BASE}/${id}`, {
       method: "DELETE",
     })
+  }
+
+  /**
+   * Returns the list of students who selected the authenticated teacher for private lessons.
+   * Endpoint: GET /api/teachers/me/students
+   * Requires TEACHER role.
+   */
+  async getMyPrivateStudents(): Promise<StudentResponse[]> {
+    return this.request<StudentResponse[]>(`${API_BASE}/me/students`)
+  }
+
+  /**
+   * Returns the weekly availability of a specific student who selected the authenticated teacher.
+   * Endpoint: GET /api/teachers/me/students/{studentId}/availability
+   * Requires TEACHER role. Backend verifies the student belongs to this teacher.
+   */
+  async getStudentAvailability(studentId: number): Promise<{ weeklyAvailabilities: WeeklyAvailabilityDTO[] }> {
+    return this.request<{ weeklyAvailabilities: WeeklyAvailabilityDTO[] }>(
+      `${API_BASE}/me/students/${studentId}/availability`
+    )
   }
 }
 

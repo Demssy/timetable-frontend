@@ -41,9 +41,14 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
   const day = DAY_TO_INDEX[lesson.timeslot.dayOfWeek]
   if (day === undefined) return null
 
+  // Private lessons have no danceGroup — use student fullName or fallback as title
+  const title = lesson.danceGroup?.name
+    ?? lesson.student?.fullName
+    ?? "Private Lesson"
+
   return {
     id: lesson.id.toString(),
-    title: lesson.danceGroup.name,
+    title,
     instructor: lesson.teacher.fullName,
     instructorId: lesson.teacher.id,
     instructorColor: lesson.teacher.colorCode || "#9ca3af",
@@ -51,10 +56,10 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
     startTime: lesson.timeslot.startTime.slice(0, 5),
     endTime: lesson.timeslot.endTime.slice(0, 5),
     day,
-    level: lesson.danceGroup.danceLevel,
+    level: lesson.danceGroup?.danceLevel,
     isPrivate: lesson.isPrivate,
     isPinned: lesson.isPinned,
-    targetAgeRange: lesson.danceGroup.targetAgeRange,
+    targetAgeRange: lesson.danceGroup?.targetAgeRange,
   }
 }
 
@@ -87,6 +92,8 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const [activeSchedule, setActiveSchedule] = useState<ScheduleMetadataDTO | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Tracks whether any schedules exist at all (vs. none for the selected week)
+  const [hasAnySchedules, setHasAnySchedules] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -97,8 +104,14 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
       setSelectedEvent(null)
 
       try {
-        const schedules = await scheduleApi.getAll()
-        const scheduleForWeek = findScheduleForWeek(selectedWeekStart, schedules)
+        // GET /api/schedules returns only PUBLISHED schedules for all roles —
+        // no client-side filtering needed.
+        const publishedSchedules = await scheduleApi.getAll()
+
+        // Inform the UI whether there are any published schedules at all
+        if (!cancelled) setHasAnySchedules(publishedSchedules.length > 0)
+
+        const scheduleForWeek = findScheduleForWeek(selectedWeekStart, publishedSchedules)
 
         if (!scheduleForWeek) {
           if (!cancelled) {
@@ -283,7 +296,9 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
         {!isLoading && !error && filteredEvents.length === 0 && (
             <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-              No classes planned for this week.
+              {hasAnySchedules
+                ? "No classes planned for this week."
+                : "No published schedules available for this week."}
             </div>
         )}
 

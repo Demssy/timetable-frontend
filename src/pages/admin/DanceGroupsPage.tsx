@@ -31,11 +31,11 @@ const EMPTY_FORM: FormState = {
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  BEGINNER: "bg-green-500/20 text-green-400",
-  ELEMENTARY: "bg-blue-500/20 text-blue-400",
-  INTERMEDIATE: "bg-yellow-500/20 text-yellow-400",
-  ADVANCED: "bg-orange-500/20 text-orange-400",
-  PROFESSIONAL: "bg-red-500/20 text-red-400",
+  BEGINNER:         "bg-green-500/20 text-green-400",
+  ELEMENTARY:       "bg-blue-500/20 text-blue-400",
+  PRE_INTERMEDIATE: "bg-cyan-500/20 text-cyan-400",
+  INTERMEDIATE:     "bg-yellow-500/20 text-yellow-400",
+  ADVANCED:         "bg-orange-500/20 text-orange-400",
 }
 
 const DANCE_LEVELS = Object.values(DanceLevel)
