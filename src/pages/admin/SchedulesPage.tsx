@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { ChevronRight, ChevronLeft, Plus, Trash2, FolderOpen, Globe, CalendarRange } from "lucide-react"
+import { ChevronRight, ChevronLeft, Plus, Trash2, FolderOpen, Globe, CalendarRange, Archive, FileText, ChevronDown } from "lucide-react"
 import { format, addDays, addWeeks, startOfWeek, endOfWeek } from "date-fns"
 import { scheduleApi } from "@/api/scheduleApi"
 import type { ScheduleMetadataDTO, CreateScheduleRequest } from "@/types/schedule"
@@ -21,10 +21,79 @@ function StatusBadge({ status }: { status: ScheduleStatus | undefined }) {
     ARCHIVED:  "bg-slate-500/15 text-slate-400 border-slate-500/30",
   }
 
+  const icons: Record<ScheduleStatus, React.ReactNode> = {
+    DRAFT:     <FileText className="h-3 w-3" />,
+    PUBLISHED: <Globe className="h-3 w-3" />,
+    ARCHIVED:  <Archive className="h-3 w-3" />,
+  }
+
   return (
-    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold", styles[status])}>
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold", styles[status])}>
+      {icons[status]}
       {status}
     </span>
+  )
+}
+
+// ─── Status change dropdown ────────────────────────────────────────────────────
+
+const STATUS_OPTIONS: { value: ScheduleStatus; label: string; icon: React.ReactNode; className: string }[] = [
+  { value: ScheduleStatus.DRAFT,     label: "Draft",     icon: <FileText className="h-3.5 w-3.5" />, className: "text-yellow-400 hover:bg-yellow-500/10" },
+  { value: ScheduleStatus.PUBLISHED, label: "Published", icon: <Globe className="h-3.5 w-3.5" />,    className: "text-green-400  hover:bg-green-500/10"  },
+  { value: ScheduleStatus.ARCHIVED,  label: "Archived",  icon: <Archive className="h-3.5 w-3.5" />,  className: "text-slate-400 hover:bg-slate-500/10"  },
+]
+
+function StatusDropdown({
+  current,
+  loading,
+  onSelect,
+}: {
+  current: ScheduleStatus | undefined
+  loading: boolean
+  onSelect: (s: ScheduleStatus) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={loading}
+        onClick={() => setOpen(prev => !prev)}
+        className="text-slate-300 hover:text-white gap-1 px-2"
+        title="Change status"
+      >
+        <ChevronDown className="h-3.5 w-3.5" />
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-8 z-40 w-36 rounded-lg border border-white/10 bg-slate-900 shadow-xl overflow-hidden">
+          {STATUS_OPTIONS.filter(o => o.value !== current).map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => { onSelect(opt.value); setOpen(false) }}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
+                opt.className
+              )}
+            >
+              {opt.icon}
+              Set {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -35,13 +104,12 @@ export function SchedulesPage() {
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: "" })
-  // Week picker state — Monday of the selected week
   const [selectedWeek, setSelectedWeek] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   )
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [publishingId, setPublishingId] = useState<number | null>(null)
+  const [changingStatusId, setChangingStatusId] = useState<number | null>(null)
 
   const fetchSchedules = async () => {
     setIsLoading(true); setError(null)
@@ -81,23 +149,33 @@ export function SchedulesPage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete") }
   }
 
-  /** Publish a DRAFT schedule; optimistically updates the list on success. */
-  const handlePublish = async (s: ScheduleMetadataDTO) => {
-    if (!window.confirm(`Publish schedule "${s.name}"? Students and teachers will be able to see it.`)) return
-    setPublishingId(s.id)
+  /** Change schedule status (DRAFT → PUBLISHED, PUBLISHED → ARCHIVED, etc.) */
+  const handleChangeStatus = async (s: ScheduleMetadataDTO, newStatus: ScheduleStatus) => {
+    if (newStatus === s.status) return
+    const confirmMsg =
+      newStatus === ScheduleStatus.PUBLISHED
+        ? `Publish "${s.name}"? Students and teachers will see it.`
+        : newStatus === ScheduleStatus.ARCHIVED
+        ? `Archive "${s.name}"? It will be hidden from the public.`
+        : `Revert "${s.name}" to Draft?`
+
+    if (!window.confirm(confirmMsg)) return
+    setChangingStatusId(s.id)
     setError(null)
     try {
-      const updated = await scheduleApi.publish(s.id)
-      // Replace the old entry with the updated one (status → PUBLISHED)
+      let updated: ScheduleMetadataDTO
+      if (newStatus === ScheduleStatus.PUBLISHED) {
+        updated = await scheduleApi.publish(s.id)
+      } else if (newStatus === ScheduleStatus.ARCHIVED) {
+        updated = await scheduleApi.archive(s.id)
+      } else {
+        updated = await scheduleApi.revertToDraft(s.id)
+      }
       setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
     } catch (err) {
-      // The backend returns a descriptive message for uniqueness violations —
-      // e.g. "Cannot publish schedule id=X: another PUBLISHED schedule already covers the same date range"
-      // Display it directly so the admin knows exactly what went wrong.
-      const message = err instanceof Error ? err.message : "Failed to publish schedule"
-      setError(`Publish failed: ${message}`)
+      setError(err instanceof Error ? err.message : "Failed to change status")
     } finally {
-      setPublishingId(null)
+      setChangingStatusId(null)
     }
   }
 
@@ -159,24 +237,21 @@ export function SchedulesPage() {
                       <StatusBadge status={s.status} />
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/schedules/${s.id}`)}>
                           <FolderOpen className="h-3.5 w-3.5 mr-1" />Open
                         </Button>
-                        {/* Publish button — only visible for DRAFT schedules */}
-                        {s.status === ScheduleStatus.DRAFT && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-green-500 hover:text-green-400 hover:bg-green-500/10"
-                            onClick={() => handlePublish(s)}
-                            disabled={publishingId === s.id}
-                          >
-                            <Globe className="h-3.5 w-3.5 mr-1" />
-                            {publishingId === s.id ? "Publishing..." : "Publish"}
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(s)}>
+                        {/* Status change dropdown */}
+                        <StatusDropdown
+                          current={s.status}
+                          loading={changingStatusId === s.id}
+                          onSelect={(newStatus) => handleChangeStatus(s, newStatus)}
+                        />
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDelete(s)}
+                        >
                           <Trash2 className="h-3.5 w-3.5 mr-1" />Delete
                         </Button>
                       </div>

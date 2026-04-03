@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { ChevronRight, Plus, Pencil, Trash2, Pin, Users, User as UserIcon } from "lucide-react"
 import { lessonApi } from "@/api/lessonApi"
@@ -253,7 +253,6 @@ export function LessonsPage() {
       }
     } else {
       if (!privateForm.teacherId) { setFormError("Teacher is required."); return }
-      if (!privateForm.studentId) { setFormError("Student is required."); return }
       if (privateForm.isPinned && !privateForm.timeslotId) {
         setFormError("Timeslot is required for pinned private lessons."); return
       }
@@ -263,7 +262,7 @@ export function LessonsPage() {
       payload = {
         teacherId: Number(privateForm.teacherId),
         danceGroupId: null,
-        studentId: Number(privateForm.studentId),
+        studentId: privateForm.studentId ? Number(privateForm.studentId) : null,
         durationMinutes: privateForm.durationMinutes,
         isPrivate: true,
         isPinned: privateForm.isPinned,
@@ -303,7 +302,7 @@ export function LessonsPage() {
 
   const handleDelete = async (lesson: ScheduledLessonDTO) => {
     const label = lesson.isPrivate
-      ? (lesson.student?.fullName ?? "private lesson")
+      ? (lesson.student?.fullName ?? "open slot")
       : (lesson.danceGroup?.name ?? "group lesson")
     if (!window.confirm(`Delete lesson for "${label}"?`)) return
     try { await lessonApi.delete(lesson.id); await fetchAll() }
@@ -315,7 +314,7 @@ export function LessonsPage() {
   /** Display name for a lesson's subject (group name or student name). */
   const lessonSubject = (lesson: ScheduledLessonDTO) =>
     lesson.isPrivate
-      ? lesson.student?.fullName ?? "Unknown Student"
+      ? lesson.student?.fullName ?? "Open Slot"
       : lesson.danceGroup?.name ?? "Unknown Group"
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -430,7 +429,13 @@ export function LessonsPage() {
                           {lesson.teacher?.fullName ?? "Unknown"}
                         </span>
                       </td>
-                      <td className="p-3 font-medium">{lessonSubject(lesson)}</td>
+                      <td className="p-3 font-medium">
+                        {lesson.isPrivate && !lesson.student ? (
+                          <span className="text-muted-foreground italic">Open Slot</span>
+                        ) : (
+                          lessonSubject(lesson)
+                        )}
+                      </td>
                       <td className="p-3">
                         {groupLevel ? (
                           <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", LEVEL_COLORS[groupLevel] ?? "bg-muted text-muted-foreground")}>
@@ -626,16 +631,21 @@ export function LessonsPage() {
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Student <span className="text-destructive">*</span></Label>
+                        <Label>Student</Label>
                         <select
                           value={privateForm.studentId}
                           onChange={e => setPrivateForm(p => ({ ...p, studentId: e.target.value === "" ? "" : Number(e.target.value) }))
                           }
-                          className={selectClass} required
+                          className={selectClass}
                         >
-                          <option value="">Select student...</option>
+                          <option value="">No student (Open Slot)</option>
                           {students.map(s => <option key={s.id} value={s.id}>{s.fullName}</option>)}
                         </select>
+                        {!privateForm.studentId && (
+                          <p className="text-xs text-muted-foreground">
+                            Without a student this becomes an available time slot for the teacher.
+                          </p>
+                        )}
                       </div>
                     </div>
 

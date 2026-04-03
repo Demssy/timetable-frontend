@@ -1,28 +1,20 @@
 import type { DayOfWeek, DanceLevel, SolverStatus } from "@/types/enums"
+import type { TeacherResponse } from "@/types/teacher"
 
 // ─── Core DTOs ────────────────────────────────────────────────────────────────
 
 export interface RoomDTO {
-  id?: number
+  id: number
   name: string
   capacity: number
   allowsParallelPrivate: boolean
 }
 
 export interface TimeslotDTO {
-  id?: number
+  id: number
   dayOfWeek: DayOfWeek
   startTime: string   // "HH:mm:ss"
   endTime: string     // "HH:mm:ss"
-}
-
-export interface TeacherSummary {
-  id: number
-  fullName: string
-  email: string
-  maxDailyHours: number
-  colorCode: string
-  qualifiedStyles: string[]
 }
 
 /** Mirrors backend StudentResponse.java — embedded in private lesson DTOs. */
@@ -41,7 +33,7 @@ export interface DanceGroupDTO {
   danceStyleId: number
   danceStyleName: string
   danceLevel: DanceLevel
-  minSize: number
+  minSize: number | null
   targetAgeRange: string | null
 }
 
@@ -56,10 +48,10 @@ export interface UpsertDanceGroupRequest {
 
 export interface ScheduledLessonDTO {
   id: number
-  teacher: TeacherSummary
+  teacher: TeacherResponse
   /** null for private lessons (student-based). */
   danceGroup: DanceGroupDTO | null
-  /** null for group lessons. */
+  /** null for group lessons AND unmatched private lessons. */
   student: StudentResponse | null
   durationMinutes: number
   isPrivate: boolean
@@ -67,6 +59,17 @@ export interface ScheduledLessonDTO {
   isActive: boolean
   timeslot: TimeslotDTO | null
   room: RoomDTO | null
+}
+
+// ─── Lesson Category (3-way classification) ──────────────────────────────────
+
+export type LessonCategory = "group" | "private-matched" | "private-available"
+
+/** Classify a lesson into one of the three visual categories. */
+export function getLessonCategory(lesson: ScheduledLessonDTO): LessonCategory {
+  if (!lesson.isPrivate) return "group"
+  if (lesson.student != null) return "private-matched"
+  return "private-available"
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────
@@ -115,16 +118,20 @@ export interface CreateScheduleRequest {
 export interface SolveResponse {
   scheduleId: number
   message: string
+  statusUrl: string   // informational only — use correct base path
 }
 
 export interface SolverStatusResponse {
   scheduleId: number
   status: SolverStatus
+  message: string
 }
 
 export interface ScheduleSolutionResponse {
   scheduleId: number
   score: string | null
+  hardScore: number
+  softScore: number
   fullyAssigned: boolean
   lessons: ScheduledLessonDTO[]
 }

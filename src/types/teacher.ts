@@ -9,8 +9,8 @@ export interface TeacherResponse {
   id: number
   fullName: string
   email: string
-  maxDailyHours: number
-  colorCode: string
+  maxDailyHours: number | null
+  colorCode: string | null
   qualifiedStyles: DanceStyleDTO[]
 }
 

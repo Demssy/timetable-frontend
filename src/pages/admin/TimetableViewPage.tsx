@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom"
 import { ChevronRight, AlertTriangle, Loader2, Pin } from "lucide-react"
 import { solverApi } from "@/api/solverApi"
 import type { ScheduleSolutionResponse, ScheduledLessonDTO } from "@/types/schedule"
+import { getLessonCategory } from "@/types/schedule"
 import { DayOfWeek, SolverStatus } from "@/types/enums"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -65,35 +66,57 @@ function LessonBlock({
   topPx: number
   heightPx: number
 }) {
-  const subject  = lesson.danceGroup?.name ?? lesson.student?.fullName ?? "Private Lesson"
-  const level    = lesson.danceGroup?.danceLevel ?? null
+  const category = getLessonCategory(lesson)
   const compact  = heightPx < 68   // less than ~1.5 rows — hide secondary info
+  const teacherColor = lesson.teacher.colorCode || "#9ca3af"
+
+  // Title & level depend on category
+  const subject = category === "group"
+    ? (lesson.danceGroup?.name ?? "Group Lesson")
+    : category === "private-matched"
+      ? (lesson.student?.fullName ?? "Private Lesson")
+      : "Open Slot"
+  const level = lesson.danceGroup?.danceLevel ?? null
+
+  // Style depends on category
+  const isAvailable = category === "private-available"
 
   return (
     <div
-      className="absolute left-1 right-1 rounded-lg overflow-hidden border cursor-pointer select-none z-10 hover:z-20 transition-all duration-200 hover:shadow-xl group"
+      className={cn(
+        "absolute left-1 right-1 rounded-lg overflow-hidden border cursor-pointer select-none z-10 hover:z-20 transition-all duration-200 hover:shadow-xl group",
+        isAvailable && "border-dashed opacity-75",
+      )}
       style={{
         top:             topPx + 2,
         height:          Math.max(heightPx - 4, 22),
-        borderColor:     `${lesson.teacher.colorCode}55`,
-        backgroundColor: `${lesson.teacher.colorCode}18`,
+        borderColor:     isAvailable ? "#9ca3af55" : `${teacherColor}55`,
+        backgroundColor: isAvailable ? "rgba(156,163,175,0.08)" : `${teacherColor}18`,
       }}
     >
       {/* Left accent stripe */}
       <div
         className="absolute left-0 top-0 bottom-0 w-[3px]"
-        style={{ backgroundColor: lesson.teacher.colorCode }}
+        style={{ backgroundColor: isAvailable ? "#9ca3af" : teacherColor }}
       />
 
       <div className="pl-3 pr-2 py-1.5 h-full flex flex-col gap-0.5 overflow-hidden">
 
         {/* Subject + badges */}
         <div className="flex items-start justify-between gap-1">
-          <span className="font-semibold text-[11px] leading-tight text-white/90 truncate">
+          <span className={cn(
+            "font-semibold text-[11px] leading-tight truncate",
+            isAvailable ? "text-slate-400 italic" : "text-white/90",
+          )}>
             {subject}
           </span>
           <div className="flex gap-0.5 shrink-0 mt-px">
-            {lesson.isPrivate && (
+            {isAvailable && (
+              <span className="rounded px-1 py-px text-[9px] font-bold bg-slate-500/30 text-slate-400 border border-slate-500/30">
+                Open
+              </span>
+            )}
+            {lesson.isPrivate && !isAvailable && (
               <span className="rounded px-1 py-px text-[9px] font-bold bg-purple-500/30 text-purple-300 border border-purple-500/30">
                 P
               </span>
@@ -115,13 +138,20 @@ function LessonBlock({
         {/* Teacher */}
         <span
           className="text-[10px] font-semibold truncate leading-none"
-          style={{ color: lesson.teacher.colorCode }}
+          style={{ color: teacherColor }}
         >
           {lesson.teacher.fullName}
         </span>
 
+        {/* "No student assigned" note for available slots */}
+        {!compact && isAvailable && (
+          <span className="text-[9px] text-slate-500 italic leading-none">
+            No student assigned
+          </span>
+        )}
+
         {/* Room — only if enough height */}
-        {!compact && lesson.room && (
+        {!compact && lesson.room && !isAvailable && (
           <span className="text-[10px] text-slate-400 truncate leading-none">
             🚪 {lesson.room.name}
           </span>
@@ -192,6 +222,16 @@ export function TimetableViewPage() {
   const assigned   = solution.lessons.filter(l => l.timeslot !== null && l.room !== null)
   const unassigned = solution.lessons.filter(l => l.timeslot === null || l.room === null)
 
+  // Statistics (Task 9)
+  const stats = {
+    total: solution.lessons.length,
+    groupLessons: solution.lessons.filter(l => !l.isPrivate).length,
+    privateMatched: solution.lessons.filter(l => l.isPrivate && l.student != null).length,
+    privateAvailable: solution.lessons.filter(l => l.isPrivate && l.student == null).length,
+    hardScore: solution.hardScore,
+    softScore: solution.softScore,
+  }
+
   // Always show all 7 days — same as TimeslotsPage
   const gridDays = DAY_ORDER
 
@@ -253,6 +293,44 @@ export function TimetableViewPage() {
             Not all lessons could be assigned
           </div>
         )}
+      </div>
+
+      {/* ── Statistics Summary (Task 9) ──────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center">
+          <p className="text-2xl font-bold text-white">{stats.total}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Total Lessons</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center">
+          <p className="text-2xl font-bold text-blue-400">{stats.groupLessons}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Group Lessons</p>
+        </div>
+        <div className="rounded-lg border border-purple-700/50 bg-purple-900/20 p-3 text-center">
+          <p className="text-2xl font-bold text-purple-400">{stats.privateMatched}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Private (matched)</p>
+        </div>
+        <div className={cn(
+          "rounded-lg border p-3 text-center",
+          stats.privateAvailable > 0 ? "border-amber-700/50 bg-amber-900/20" : "border-slate-700 bg-slate-800/50"
+        )}>
+          <p className={cn("text-2xl font-bold", stats.privateAvailable > 0 ? "text-amber-400" : "text-slate-400")}>
+            {stats.privateAvailable}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Available Slots</p>
+        </div>
+        <div className={cn(
+          "rounded-lg border p-3 text-center",
+          stats.hardScore < 0 ? "border-red-700/50 bg-red-900/20" : "border-green-700/50 bg-green-900/20"
+        )}>
+          <p className={cn("text-2xl font-bold", stats.hardScore < 0 ? "text-red-400" : "text-green-400")}>
+            {stats.hardScore}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Hard Violations</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center">
+          <p className="text-2xl font-bold text-yellow-400">{stats.softScore}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Quality Score</p>
+        </div>
       </div>
 
       {/* ── Calendar grid ──────────────────────────────────────────────────── */}
@@ -358,6 +436,9 @@ export function TimetableViewPage() {
             <span className="rounded border px-2 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-300 border-purple-500/30">
               P — Private
             </span>
+            <span className="rounded border border-dashed px-2 py-0.5 text-[10px] font-bold bg-slate-500/10 text-slate-400 border-slate-500/30">
+              Open Slot — No student
+            </span>
             <span className="flex items-center gap-1 text-[10px] text-amber-400">
               <Pin className="h-2.5 w-2.5" /> Pinned
             </span>
@@ -381,14 +462,25 @@ export function TimetableViewPage() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {unassigned.map(lesson => {
-              const subject = lesson.danceGroup?.name ?? lesson.student?.fullName ?? "Private"
+              const category = getLessonCategory(lesson)
+              const subject = category === "group"
+                ? (lesson.danceGroup?.name ?? "Group Lesson")
+                : category === "private-matched"
+                  ? (lesson.student?.fullName ?? "Private")
+                  : "Open Slot"
+              const teacherColor = lesson.teacher.colorCode || "#9ca3af"
               return (
                 <div
                   key={lesson.id}
-                  className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-1.5"
+                  className={cn(
+                    "rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-1.5",
+                    category === "private-available" && "border-dashed",
+                  )}
                 >
-                  <p className="font-semibold text-white/80 truncate">{subject}</p>
-                  <p className="font-medium truncate" style={{ color: lesson.teacher.colorCode }}>
+                  <p className={cn("font-semibold truncate", category === "private-available" ? "text-slate-400 italic" : "text-white/80")}>
+                    {subject}
+                  </p>
+                  <p className="font-medium truncate" style={{ color: teacherColor }}>
                     {lesson.teacher.fullName}
                   </p>
                   <p className="text-muted-foreground">{lesson.durationMinutes} min</p>

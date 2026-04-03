@@ -1,21 +1,44 @@
 // src_front/components/event-card.tsx
 
 import { cn } from "@/lib/utils"
-import { Pin, MapPin, Clock } from "lucide-react"
+import { Pin, MapPin, Clock, UserX } from "lucide-react"
 import type { ScheduledEvent } from "./weekly-timetable.tsx"
 
 interface EventCardProps {
   event: ScheduledEvent
   onClick: () => void
   isSelected: boolean
-  variant: "mobile" | "grid" | "horizontal" // <-- Добавили horizontal
+  variant: "mobile" | "grid" | "horizontal"
+}
+
+/** Returns variant-specific styles depending on the lesson category. */
+function getCategoryStyles(event: ScheduledEvent) {
+  if (event.category === "private-available") {
+    return {
+      borderLeftColor: "#9ca3af",
+      backgroundColor: "rgba(156,163,175,0.08)",
+      extraClass: "border-dashed opacity-75",
+    }
+  }
+  if (event.category === "private-matched") {
+    return {
+      borderLeftColor: event.instructorColor,
+      backgroundColor: `${event.instructorColor}20`,
+      extraClass: "",
+    }
+  }
+  // group — default
+  return {
+    borderLeftColor: event.instructorColor,
+    backgroundColor: `${event.instructorColor}15`,
+    extraClass: "",
+  }
 }
 
 export function EventCard({ event, onClick, isSelected, variant }: EventCardProps) {
-  const dynamicStyle = {
-    borderLeftColor: event.instructorColor,
-    backgroundColor: `${event.instructorColor}15`, // Прозрачность 8% для фона
-  }
+  const { borderLeftColor, backgroundColor, extraClass } = getCategoryStyles(event)
+  const dynamicStyle = { borderLeftColor, backgroundColor }
+  const isAvailableSlot = event.category === "private-available"
 
   // --- МОБИЛЬНАЯ ВЕРСИЯ ---
   if (variant === "mobile") {
@@ -24,17 +47,25 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
             onClick={onClick}
             className={cn(
                 "w-full rounded-md border border-border/50 border-l-4 p-3 text-left transition-all space-y-2.5",
-                isSelected && "ring-2 ring-ring"
+                isSelected && "ring-2 ring-ring",
+                extraClass,
             )}
             style={dynamicStyle}
         >
           <div className="flex items-start justify-between gap-2">
             <div>
-              <span className="font-bold text-base text-foreground block">{event.title}</span>
+              <span className={cn("font-bold text-base block", isAvailableSlot ? "text-muted-foreground italic" : "text-foreground")}>
+                {event.title}
+              </span>
               <span className="font-semibold text-xs mt-0.5 block" style={{ color: event.instructorColor }}>{event.instructor}</span>
             </div>
             <div className="flex gap-1 shrink-0 mt-0.5">
-              {event.isPrivate && <span className="rounded bg-purple-500/30 text-purple-400 px-1.5 py-0.5 text-[10px] font-bold">P</span>}
+              {isAvailableSlot && (
+                <span className="rounded bg-gray-500/30 text-gray-400 px-1.5 py-0.5 text-[10px] font-bold flex items-center gap-0.5">
+                  <UserX className="h-3 w-3" /> No student
+                </span>
+              )}
+              {event.isPrivate && !isAvailableSlot && <span className="rounded bg-purple-500/30 text-purple-400 px-1.5 py-0.5 text-[10px] font-bold">P</span>}
               {event.isPinned && <Pin className="h-4 w-4 text-amber-400" />}
             </div>
           </div>
@@ -60,7 +91,8 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
             onClick={onClick}
             className={cn(
                 "h-full w-full rounded border border-border/30 border-l-4 p-2 text-left transition-all cursor-pointer flex items-center justify-between gap-2 overflow-hidden",
-                isSelected && "ring-2 ring-ring shadow-md hover:brightness-110"
+                isSelected && "ring-2 ring-ring shadow-md hover:brightness-110",
+                extraClass,
             )}
             style={dynamicStyle}
         >
@@ -69,11 +101,17 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
             <span className="font-semibold text-[10px] truncate opacity-80 text-foreground">
               {event.instructor}
             </span>
-              {event.isPrivate && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[9px] font-bold">P</span>}
+              {isAvailableSlot && (
+                <span className="rounded bg-gray-500/30 text-gray-400 px-1 text-[9px] font-bold">Open</span>
+              )}
+              {event.isPrivate && !isAvailableSlot && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[9px] font-bold">P</span>}
               {event.isPinned && <Pin className="h-3 w-3 text-amber-400" />}
             </div>
 
-            <span className="font-bold leading-tight text-xs sm:text-sm truncate drop-shadow-sm mt-0.5" style={{ color: event.instructorColor }}>
+            <span
+              className={cn("font-bold leading-tight text-xs sm:text-sm truncate drop-shadow-sm mt-0.5", isAvailableSlot && "italic text-muted-foreground")}
+              style={isAvailableSlot ? undefined : { color: event.instructorColor }}
+            >
             {event.title}
           </span>
 
@@ -101,17 +139,21 @@ export function EventCard({ event, onClick, isSelected, variant }: EventCardProp
       <button
           onClick={onClick}
           className={cn(
-              "w-full rounded border border-border/30 border-l-4 p-2.5 text-left transition-all cursor-pointer flex flex-col gap-1.5",
-              isSelected && "ring-2 ring-ring shadow-md hover:brightness-110"
+              "w-full h-full rounded border border-border/30 border-l-4 p-2.5 text-left transition-all cursor-pointer flex flex-col gap-1.5",
+              isSelected && "ring-2 ring-ring shadow-md hover:brightness-110",
+              extraClass,
           )}
           style={dynamicStyle}
       >
         <div className="flex items-start justify-between gap-1 w-full">
-          <span className="font-bold leading-tight text-sm text-foreground">
+          <span className={cn("font-bold leading-tight text-sm", isAvailableSlot ? "text-muted-foreground italic" : "text-foreground")}>
             {event.title}
           </span>
           <div className="flex gap-0.5 shrink-0">
-            {event.isPrivate && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[10px] font-bold">P</span>}
+            {isAvailableSlot && (
+              <span className="rounded bg-gray-500/30 text-gray-400 px-1 text-[10px] font-bold">Open</span>
+            )}
+            {event.isPrivate && !isAvailableSlot && <span className="rounded bg-purple-500/30 text-purple-400 px-1 text-[10px] font-bold">P</span>}
             {event.isPinned && <Pin className="h-3 w-3 text-amber-400" />}
           </div>
         </div>

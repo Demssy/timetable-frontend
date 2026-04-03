@@ -1,12 +1,14 @@
 import { apiFetch } from "@/api/client"
 import { DanceLevel } from "@/types/enums"
 import type { ScheduledLessonDTO, CreateLessonRequest, StudentResponse } from "@/types/schedule"
+import type { TeacherResponse } from "@/types/teacher"
 
 const BASE = "/api/admin/lessons"
 
-type RawLesson = Partial<Omit<ScheduledLessonDTO, "student">> & {
+type RawLesson = Partial<Omit<ScheduledLessonDTO, "student" | "teacher">> & {
   lessonId?: number
   isActive?: boolean
+  teacher?: TeacherResponse
   teacherId?: number
   teacherName?: string
   teacherFullName?: string
@@ -54,13 +56,13 @@ function resolveStudent(raw: RawLesson): StudentResponse | null {
 }
 
 function normalizeLesson(raw: RawLesson): ScheduledLessonDTO {
-  const teacher = raw.teacher
+  const teacher: TeacherResponse = raw.teacher
     ? raw.teacher
     : {
         id: raw.teacherId ?? -1,
         fullName: raw.teacherName ?? raw.teacherFullName ?? UNKNOWN_TEACHER_NAME,
         email: "",
-        maxDailyHours: 0,
+        maxDailyHours: null,
         colorCode: "#9ca3af",
         qualifiedStyles: [],
       }
@@ -77,7 +79,7 @@ function normalizeLesson(raw: RawLesson): ScheduledLessonDTO {
           danceStyleId: 0,
           danceStyleName: "",
           danceLevel: toKnownDanceLevel(raw.danceLevel ?? raw.level),
-          minSize: 1,
+          minSize: null,
           targetAgeRange: null,
         }
 

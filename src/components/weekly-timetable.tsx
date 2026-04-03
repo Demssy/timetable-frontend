@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { scheduleApi } from "@/api/scheduleApi"
 import { solverApi } from "@/api/solverApi"
 import type { ScheduleMetadataDTO, ScheduledLessonDTO } from "@/types/schedule"
+import { getLessonCategory } from "@/types/schedule"
+import type { LessonCategory } from "@/types/schedule"
 import { MapPin, Clock, CalendarDays, X, LayoutGrid, Calendar } from "lucide-react"
 
 
@@ -24,11 +26,19 @@ export interface ScheduledEvent {
   isPrivate?: boolean
   isPinned?: boolean
   targetAgeRange?: string | null
+  category: LessonCategory
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+/** First hour shown in the classic grid. Must stay in sync with TIME_SLOTS[0]. */
+const GRID_START_HOUR = 8
+/** Height of one hour row in pixels. Must match the Tailwind class used on grid cells (h-28 = 112px). */
+const SLOT_HEIGHT_PX = 112
+
 const TIME_SLOTS = [
-  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"
+  "08:00", "09:00", "10:00", "11:00", "12:00",
+  "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00",
 ]
 
 const DAY_TO_INDEX: Record<string, number> = {
@@ -41,10 +51,17 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
   const day = DAY_TO_INDEX[lesson.timeslot.dayOfWeek]
   if (day === undefined) return null
 
-  // Private lessons have no danceGroup — use student fullName or fallback as title
-  const title = lesson.danceGroup?.name
-    ?? lesson.student?.fullName
-    ?? "Private Lesson"
+  const category = getLessonCategory(lesson)
+
+  // Title depends on category:
+  // - group → dance group name
+  // - private-matched → student name
+  // - private-available → "Open Slot"
+  const title = category === "group"
+    ? (lesson.danceGroup?.name ?? "Group Lesson")
+    : category === "private-matched"
+      ? (lesson.student?.fullName ?? "Private Lesson")
+      : "Open Slot"
 
   return {
     id: lesson.id.toString(),
@@ -60,6 +77,7 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
     isPrivate: lesson.isPrivate,
     isPinned: lesson.isPinned,
     targetAgeRange: lesson.danceGroup?.targetAgeRange,
+    category,
   }
 }
 
@@ -187,17 +205,21 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     return filteredEvents.filter((event) => event.day === dayIndex)
   }
 
-  // Расчет позиции для Классического вида (Абсолютное позиционирование)
+  // Расчет позиции для Классического вида (Абсолютное позиционирование).
+  // Каждый час = SLOT_HEIGHT_PX px. Начало отсчёта — GRID_START_HOUR.
   const getEventPosition = (event: ScheduledEvent) => {
-    const startHour = Number.parseInt(event.startTime.split(":")[0])
-    const endHour = Number.parseInt(event.endTime.split(":")[0])
+    const startHour    = Number.parseInt(event.startTime.split(":")[0])
     const startMinutes = Number.parseInt(event.startTime.split(":")[1])
-    const endMinutes = Number.parseInt(event.endTime.split(":")[1])
+    const endHour      = Number.parseInt(event.endTime.split(":")[0])
+    const endMinutes   = Number.parseInt(event.endTime.split(":")[1])
 
-    const startOffset = (startHour - 9) * 64 + (startMinutes / 60) * 64
-    const duration = (endHour - startHour) * 64 + ((endMinutes - startMinutes) / 60) * 64
+    const startTotalMinutes  = (startHour - GRID_START_HOUR) * 60 + startMinutes
+    const durationMinutes    = (endHour - startHour) * 60 + (endMinutes - startMinutes)
 
-    return { top: startOffset, height: Math.max(duration, 64) }
+    const top    = (startTotalMinutes / 60) * SLOT_HEIGHT_PX
+    const height = Math.max((durationMinutes / 60) * SLOT_HEIGHT_PX, SLOT_HEIGHT_PX)
+
+    return { top, height }
   }
 
   return (
@@ -417,7 +439,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                   {/* Колонка времени */}
                   <div className="w-[80px] shrink-0 border-r border-border/50 bg-muted/5">
                     {TIME_SLOTS.map((time) => (
-                        <div key={time} className="h-16 border-b border-border/30 pr-3 text-right text-xs font-mono text-muted-foreground flex items-start justify-end pt-2">
+                        <div key={time} className="h-28 border-b border-border/30 pr-3 text-right text-xs font-mono text-muted-foreground flex items-start justify-end pt-2">
                           {time}
                         </div>
                     ))}
@@ -432,7 +454,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                           <div key={day} className="relative border-r border-border/50 last:border-r-0">
                             {/* Линии сетки часов (тонкие, прозрачные) */}
                             {TIME_SLOTS.map((time) => (
-                                <div key={time} className="h-16 border-b border-border/20" />
+                                <div key={time} className="h-28 border-b border-border/20" />
                             ))}
 
                             {/* Уроки (Абсолютное позиционирование) */}
