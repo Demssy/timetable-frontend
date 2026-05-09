@@ -1,15 +1,18 @@
-// src_front/components/weekly-timetable.tsx
-import { useEffect, useMemo, useState } from "react"
+import {useEffect, useMemo, useState, useRef, useCallback} from "react"
 import { addWeeks, endOfWeek, format, isWithinInterval, parseISO, startOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { EventCard } from "./event-card.tsx"
 import { Button } from "@/components/ui/button"
 import { scheduleApi } from "@/api/scheduleApi"
 import { solverApi } from "@/api/solverApi"
+import { groupsApi } from "@/api/groupsApi"
+import { cancelScheduledLesson, restoreScheduledLesson } from "@/api/lessonApi"
 import type { ScheduleMetadataDTO, ScheduledLessonDTO } from "@/types/schedule"
 import { getLessonCategory } from "@/types/schedule"
 import type { LessonCategory } from "@/types/schedule"
-import { MapPin, Clock, CalendarDays, X, LayoutGrid, Calendar } from "lucide-react"
+import { MapPin, Clock, CalendarDays, X, LayoutGrid, Calendar, Ban, RotateCcw } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
+import { UserRole } from "@/types/enums"
 
 
 export interface ScheduledEvent {
@@ -27,6 +30,12 @@ export interface ScheduledEvent {
   isPinned?: boolean
   targetAgeRange?: string | null
   category: LessonCategory
+  /** ID of the student for private lessons (null for group lessons). */
+  studentId?: number | null
+  /** ID of the dance group for group lessons (null for private lessons). */
+  groupId?: number | null
+  /** Whether this lesson has been cancelled by a teacher or admin. */
+  isCancelled: boolean
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -78,6 +87,9 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
     isPinned: lesson.isPinned,
     targetAgeRange: lesson.danceGroup?.targetAgeRange,
     category,
+    studentId: lesson.student?.id ?? null,
+    groupId: lesson.danceGroup?.id ?? null,
+    isCancelled: lesson.isCancelled ?? false,
   }
 }
 
@@ -99,6 +111,11 @@ function findScheduleForWeek(weekStart: Date, schedules: ScheduleMetadataDTO[]) 
 }
 
 export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
+  const { user } = useAuth()
+  const isTeacher = user?.role === UserRole.TEACHER
+  const isStudent = user?.role === UserRole.STUDENT
+  const isAdmin = user?.role === UserRole.ADMIN
+
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null)
 
@@ -112,6 +129,24 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const [error, setError] = useState<string | null>(null)
   // Tracks whether any schedules exist at all (vs. none for the selected week)
   const [hasAnySchedules, setHasAnySchedules] = useState(true)
+  // For STUDENT role: set of group IDs the student is enrolled in (stable, fetched once)
+  const [myGroupIds, setMyGroupIds] = useState<Set<number> | null>(null)
+
+  // ── Cancellation state ────────────────────────────────────────────────────────
+  const [cancelDialogEvent, setCancelDialogEvent] = useState<ScheduledEvent | null>(null)
+  const [cancelActionLoading, setCancelActionLoading] = useState(false)
+  const [restoreLoadingId, setRestoreLoadingId] = useState<string | null>(null)
+  const cancelReasonRef = useRef<HTMLInputElement>(null)
+
+  // Fetch student's enrolled groups once on mount
+  useEffect(() => {
+    if (!isStudent) return
+    groupsApi.getMy().then((groups) => {
+      setMyGroupIds(new Set(groups.map((g) => g.id)))
+    }).catch(() => {
+      setMyGroupIds(new Set())
+    })
+  }, [isStudent])
 
   useEffect(() => {
     let cancelled = false
@@ -139,6 +174,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
           return
         }
 
+        // Fetch solution for the active schedule
         const solution = await solverApi.getSolution(scheduleForWeek.id)
         const mappedEvents = solution.lessons
             .map((lesson) => mapLessonToEvent(lesson))
@@ -168,10 +204,30 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     }
   }, [selectedWeekStart])
 
-  const filteredEvents = useMemo(
-      () => (filter === "all" ? events : events.filter((event) => event.instructorId === filter)),
-      [events, filter],
-  )
+  const filteredEvents = useMemo(() => {
+    let base = events
+
+    // TEACHER: show only their own lessons, ignore the manual filter
+    if (isTeacher && user) {
+      return base.filter((e) => e.instructorId === user.id)
+    }
+
+    // STUDENT: show private lessons where they are the student,
+    //          AND group lessons where they are enrolled in the group.
+    if (isStudent && myGroupIds !== null) {
+      return base.filter((e) => {
+        if (e.isPrivate) {
+          // private-matched → student ID must match current user
+          return e.studentId === user?.id
+        }
+        // group lesson → student must be enrolled in this group
+        return e.groupId !== null && e.groupId !== undefined && myGroupIds.has(e.groupId)
+      })
+    }
+
+    // ADMIN (or groups not loaded yet): respect the manual teacher filter
+    return filter === "all" ? base : base.filter((e) => e.instructorId === filter)
+  }, [events, filter, isTeacher, isStudent, user, myGroupIds])
 
   const uniqueTeachers = useMemo(() => {
     const map = new Map<number, { id: number, name: string, color: string }>()
@@ -199,6 +255,53 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const handleWeekInputChange = (value: string) => {
     if (!value) return
     setSelectedWeekStart(startOfWeek(parseISO(value), { weekStartsOn: 1 }))
+  }
+
+  // ── Cancel / Restore handlers ─────────────────────────────────────────────────
+
+  const handleConfirmCancel = useCallback(async () => {
+    if (!cancelDialogEvent) return
+    setCancelActionLoading(true)
+    const reason = cancelReasonRef.current?.value.trim() || undefined
+    try {
+      const lessonId = parseInt(cancelDialogEvent.id, 10)
+      await cancelScheduledLesson(lessonId, reason)
+      setEvents((prev) =>
+        prev.map((e) => (e.id === cancelDialogEvent.id ? { ...e, isCancelled: true } : e))
+      )
+      setCancelDialogEvent(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to cancel lesson")
+    } finally {
+      setCancelActionLoading(false)
+    }
+  }, [cancelDialogEvent])
+
+  const handleRestore = useCallback(async (event: ScheduledEvent) => {
+    setRestoreLoadingId(event.id)
+    try {
+      const lessonId = parseInt(event.id, 10)
+      await restoreScheduledLesson(lessonId)
+      setEvents((prev) =>
+        prev.map((e) => (e.id === event.id ? { ...e, isCancelled: false } : e))
+      )
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to restore lesson")
+    } finally {
+      setRestoreLoadingId(null)
+    }
+  }, [])
+
+  /** Determines whether a Cancel button should appear on a given event card. */
+  function canCancelEvent(event: ScheduledEvent): boolean {
+    if (event.isCancelled) return false
+    if (isAdmin) return true
+    return isTeacher && !!user && event.instructorId === user.id
+  }
+
+  /** Determines whether a Restore button should appear on a given event card. */
+  function canRestoreEvent(event: ScheduledEvent): boolean {
+    return isAdmin && event.isCancelled
   }
 
   const getEventsForDay = (dayIndex: number) => {
@@ -239,7 +342,8 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
             <div className="hidden md:block h-8 w-px bg-border"></div>
 
-            {/* Легенда учителей */}
+            {/* Легенда учителей — только для ADMIN */}
+            {!isTeacher && !isStudent && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                   onClick={() => setFilter("all")}
@@ -265,6 +369,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                   </button>
               ))}
             </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 w-full xl:w-auto">
@@ -497,6 +602,57 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
             </div>
         )}
 
+        {/* Cancel-lesson dialog */}
+        {cancelDialogEvent && (
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+                onClick={() => !cancelActionLoading && setCancelDialogEvent(null)}
+                onKeyDown={(e) => e.key === "Escape" && !cancelActionLoading && setCancelDialogEvent(null)}
+            >
+              <div
+                  className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+              >
+                <h2 className="text-lg font-semibold text-foreground">Cancel Lesson</h2>
+                <p className="text-muted-foreground text-sm">
+                  You are about to cancel{" "}
+                  <span className="text-foreground font-medium">
+                    {cancelDialogEvent.title} · {cancelDialogEvent.instructor}
+                  </span>
+                  . This action can be undone by an admin.
+                </p>
+                <label className="block text-sm text-foreground">
+                  Reason <span className="text-muted-foreground">(optional)</span>
+                  <input
+                      ref={cancelReasonRef}
+                      autoFocus
+                      placeholder="e.g. Teacher is sick"
+                      onKeyDown={(e) => e.key === "Enter" && !cancelActionLoading && handleConfirmCancel()}
+                      className="mt-1 w-full rounded-lg bg-background border border-border px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <div className="flex justify-end gap-3">
+                  <button
+                      type="button"
+                      disabled={cancelActionLoading}
+                      onClick={() => setCancelDialogEvent(null)}
+                      className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    Keep lesson
+                  </button>
+                  <button
+                      type="button"
+                      disabled={cancelActionLoading}
+                      onClick={handleConfirmCancel}
+                      className="rounded-md bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  >
+                    {cancelActionLoading ? "Cancelling…" : "Cancel lesson"}
+                  </button>
+                </div>
+              </div>
+            </div>
+        )}
+
         {/* Модальное окно */}
         {selectedEvent && (
             <div
@@ -580,6 +736,44 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                       <span className="font-medium">{selectedEvent.room}</span>
                     </div>
                   </div>
+
+                  {/* Cancellation status */}
+                  {selectedEvent.isCancelled && (
+                    <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-sm text-red-400 flex items-center gap-2">
+                      <Ban className="h-4 w-4 shrink-0" />
+                      This lesson has been cancelled
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  {canCancelEvent(selectedEvent) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEvent(null)
+                        setCancelDialogEvent(selectedEvent)
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg border border-red-700/60 bg-red-600/10 hover:bg-red-600/20 px-4 py-2.5 text-sm font-semibold text-red-400 transition-colors"
+                    >
+                      <Ban className="h-4 w-4" />
+                      Cancel lesson
+                    </button>
+                  )}
+
+                  {canRestoreEvent(selectedEvent) && (
+                    <button
+                      type="button"
+                      disabled={restoreLoadingId === selectedEvent.id}
+                      onClick={async () => {
+                        await handleRestore(selectedEvent)
+                        setSelectedEvent(null)
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg border border-green-700/60 bg-green-600/10 hover:bg-green-600/20 px-4 py-2.5 text-sm font-semibold text-green-400 transition-colors disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {restoreLoadingId === selectedEvent.id ? "Restoring…" : "Restore lesson"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

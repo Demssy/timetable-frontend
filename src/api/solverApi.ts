@@ -4,6 +4,7 @@ import type {
   SolverStatusResponse,
   ScheduleSolutionResponse,
 } from "@/types/schedule"
+import type { ScoreExplanationResponse, UnmetStudentDTO } from "@/types/solver"
 
 const BASE = "/api/admin/solver"
 
@@ -19,4 +20,10 @@ export const solverApi = {
 
   getSolution: (scheduleId: number) =>
     apiFetch<ScheduleSolutionResponse>(`${BASE}/solution/${scheduleId}`),
+
+  getScoreExplanation: (scheduleId: number) =>
+    apiFetch<ScoreExplanationResponse>(`${BASE}/score-explanation/${scheduleId}`),
+
+  getUnmetStudents: (scheduleId: number) =>
+    apiFetch<UnmetStudentDTO[]>(`${BASE}/unmet-students/${scheduleId}`),
 }

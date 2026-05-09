@@ -5,7 +5,7 @@ import type { TeacherResponse } from "@/types/teacher"
 
 const BASE = "/api/admin/lessons"
 
-type RawLesson = Partial<Omit<ScheduledLessonDTO, "student" | "teacher">> & {
+type RawLesson = Partial<Omit<ScheduledLessonDTO, "student" | "teacher" | "isCancelled" | "cancelledById" | "cancelledAt" | "cancelReason">> & {
   lessonId?: number
   isActive?: boolean
   teacher?: TeacherResponse
@@ -26,6 +26,11 @@ type RawLesson = Partial<Omit<ScheduledLessonDTO, "student" | "teacher">> & {
   studentBirthDate?: string
   studentDanceLevel?: string | null
   studentParentContact?: string | null
+  // Cancellation fields (may be absent in older responses → default to false / null)
+  isCancelled?: boolean
+  cancelledById?: number | null
+  cancelledAt?: string | null
+  cancelReason?: string | null
 }
 
 const UNKNOWN_TEACHER_NAME = "Unknown teacher"
@@ -98,6 +103,10 @@ function normalizeLesson(raw: RawLesson): ScheduledLessonDTO {
     isActive: raw.isActive ?? true,
     timeslot: raw.timeslot ?? null,
     room: raw.room ?? null,
+    isCancelled: raw.isCancelled ?? false,
+    cancelledById: raw.cancelledById ?? null,
+    cancelledAt: raw.cancelledAt ?? null,
+    cancelReason: raw.cancelReason ?? null,
   }
 }
 
@@ -107,6 +116,9 @@ function normalizeLessons(raw: RawLesson[]): ScheduledLessonDTO[] {
 
 export const lessonApi = {
   getAll: async () => normalizeLessons(await apiFetch<RawLesson[]>(BASE)),
+
+  getMySchedule: async () =>
+    normalizeLessons(await apiFetch<RawLesson[]>("/api/lessons/my-schedule")),
 
   getById: async (id: number) => normalizeLesson(await apiFetch<RawLesson>(`${BASE}/${id}`)),
 
@@ -121,3 +133,41 @@ export const lessonApi = {
 
   delete: (id: number) => apiFetch<void>(`${BASE}/${id}`, { method: "DELETE" }),
 }
+
+// ─── Scheduled-lesson cancellation API ───────────────────────────────────────
+// Base path is separate from /api/admin/lessons — no admin prefix.
+
+const SCHEDULED_BASE = "/api/scheduled-lessons"
+
+/**
+ * Cancel a scheduled lesson snapshot.
+ * TEACHER: can cancel only their own lessons.
+ * ADMIN: can cancel any lesson.
+ *
+ * @param id     - ScheduledLesson ID from the snapshot table
+ * @param reason - Optional cancellation reason
+ */
+export async function cancelScheduledLesson(
+  id: number,
+  reason?: string,
+): Promise<ScheduledLessonDTO> {
+  return normalizeLesson(
+    await apiFetch<RawLesson>(`${SCHEDULED_BASE}/${id}/cancel`, {
+      method: "PATCH",
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
+  )
+}
+
+/**
+ * Restore a previously cancelled lesson.
+ * ADMIN only.
+ *
+ * @param id - ScheduledLesson ID
+ */
+export async function restoreScheduledLesson(id: number): Promise<ScheduledLessonDTO> {
+  return normalizeLesson(
+    await apiFetch<RawLesson>(`${SCHEDULED_BASE}/${id}/restore`, { method: "PATCH" }),
+  )
+}
+

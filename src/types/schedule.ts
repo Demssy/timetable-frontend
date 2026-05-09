@@ -59,6 +59,13 @@ export interface ScheduledLessonDTO {
   isActive: boolean
   timeslot: TimeslotDTO | null
   room: RoomDTO | null
+  // ── Cancellation fields ───────────────────────────────────────────────────
+  isCancelled: boolean
+  /** ID of the user (teacher or admin) who cancelled this lesson. */
+  cancelledById: number | null
+  /** ISO-8601 datetime string, e.g. "2026-05-07T18:30:00". */
+  cancelledAt: string | null
+  cancelReason: string | null
 }
 
 // ─── Lesson Category (3-way classification) ──────────────────────────────────

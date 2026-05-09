@@ -99,7 +99,7 @@ export function DanceGroupsPage() {
       name: group.name,
       danceStyleId: group.danceStyleId,
       danceLevel: group.danceLevel,
-      minSize: group.minSize,
+      minSize: group.minSize ?? 1,
       targetAgeRange: group.targetAgeRange ?? "",
     })
     setFormError(null)

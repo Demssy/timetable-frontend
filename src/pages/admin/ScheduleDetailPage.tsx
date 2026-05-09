@@ -68,8 +68,8 @@ export function ScheduleDetailPage() {
   const { status, isPolling, startPolling, stopPolling } = useSolverPolling(scheduleId)
 
   const isSolving = status === SolverStatus.SOLVING_ACTIVE || status === SolverStatus.SOLVING_SCHEDULED
-  const hasSolution = solution !== null
-
+  const hasSolution = solution !== null && !!solution.lessons.length
+  console.log(solution)
   // ── CRITICAL: Reset all state immediately when navigating to a new schedule ─
   // This runs synchronously before any fetch, so the user never sees ghost data.
   useEffect(() => {

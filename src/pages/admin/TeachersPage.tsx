@@ -296,8 +296,8 @@ export function TeachersPage() {
     setEditForm({
       fullName: teacher.fullName,
       email: teacher.email,
-      maxDailyHours: teacher.maxDailyHours,
-      colorCode: teacher.colorCode,
+      maxDailyHours: teacher.maxDailyHours ?? 6,
+      colorCode: teacher.colorCode ?? "#3498DB",
       qualifiedStyleIds: teacher.qualifiedStyles.map((style) => style.id),
     })
 
@@ -488,8 +488,8 @@ export function TeachersPage() {
                         <div className="flex items-center gap-2">
                           <span
                             className="inline-block h-5 w-5 rounded border border-slate-600 shrink-0"
-                            style={{ backgroundColor: teacher.colorCode }}
-                            title={teacher.colorCode}
+                            style={{ backgroundColor: teacher.colorCode ?? undefined }}
+                            title={teacher.colorCode ?? undefined}
                           />
                           <span className="text-muted-foreground text-xs font-mono">{teacher.colorCode}</span>
                         </div>

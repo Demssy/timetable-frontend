@@ -331,7 +331,7 @@ export default function ProfilePage() {
                         {/* Color swatch */}
                         <div
                           className="mt-1 h-4 w-4 rounded-full shrink-0 ring-1 ring-white/20"
-                          style={{ backgroundColor: teacher.colorCode }}
+                          style={{ backgroundColor: teacher.colorCode ?? undefined }}
                         />
 
                         <div className="flex-1 min-w-0">
