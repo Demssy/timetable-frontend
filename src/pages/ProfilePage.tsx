@@ -33,6 +33,15 @@ export default function ProfilePage() {
   // ─── Private students state (TEACHER role) ────────────────────────────────
   const [privateStudents, setPrivateStudents] = useState<StudentResponse[]>([])
 
+  // ─── Desired lessons per week ──────────────────────────────────────────────
+  const [desiredLessonsPerWeek, setDesiredLessonsPerWeek] = useState<string>("")
+  const [loadedStudentProfile, setLoadedStudentProfile] = useState<StudentResponse | null>(null)
+  const [loadedTeacherProfile, setLoadedTeacherProfile] = useState<TeacherResponse | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+
   // ─── Student availability modal (TEACHER role) ────────────────────────────
   const [availabilityModalStudent, setAvailabilityModalStudent] = useState<StudentResponse | null>(null)
   const [studentAvailabilities, setStudentAvailabilities] = useState<WeeklyAvailability[]>([])
@@ -78,6 +87,37 @@ export default function ProfilePage() {
         .finally(() => setIsLoadingPreferences(false))
     } else {
       setIsLoadingPreferences(false)
+    }
+  }, [user?.id, user?.role])
+
+  // Load desiredLessonsPerWeek from profile endpoint
+  useEffect(() => {
+    if (!user) return
+    if (user.role !== UserRole.STUDENT && user.role !== UserRole.TEACHER) return
+
+    setProfileLoading(true)
+    setProfileError(null)
+
+    if (user.role === UserRole.STUDENT) {
+      userService.getStudentProfile()
+        .then((profile) => {
+          setLoadedStudentProfile(profile)
+          setDesiredLessonsPerWeek(
+            profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : ""
+          )
+        })
+        .catch((err) => setProfileError(err instanceof Error ? err.message : "Failed to load profile."))
+        .finally(() => setProfileLoading(false))
+    } else {
+      teacherService.getMyTeacherProfile()
+        .then((profile) => {
+          setLoadedTeacherProfile(profile)
+          setDesiredLessonsPerWeek(
+            profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : ""
+          )
+        })
+        .catch((err) => setProfileError(err instanceof Error ? err.message : "Failed to load profile."))
+        .finally(() => setProfileLoading(false))
     }
   }, [user?.id, user?.role])
 
@@ -132,6 +172,49 @@ export default function ProfilePage() {
   const isStudent = user?.role === UserRole.STUDENT
   const isTeacher = user?.role === UserRole.TEACHER
 
+  const handleSaveProfile = async () => {
+    if (!user) return
+
+    // Validate: must be empty or a non-negative integer
+    const parsed = desiredLessonsPerWeek.trim() === "" ? null : parseInt(desiredLessonsPerWeek, 10)
+    if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
+      setProfileError("Desired lessons per week must be a whole number ≥ 0.")
+      return
+    }
+
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(false)
+    try {
+      if (isStudent && loadedStudentProfile) {
+        await userService.updateStudentProfile({
+          fullName: loadedStudentProfile.fullName,
+          birthDate: loadedStudentProfile.birthDate,
+          danceLevel: loadedStudentProfile.danceLevel,
+          parentContact: loadedStudentProfile.parentContact,
+          desiredLessonsPerWeek: parsed,
+        })
+      } else if (isTeacher && loadedTeacherProfile) {
+        await teacherService.updateMyTeacherProfile({
+          fullName: loadedTeacherProfile.fullName,
+          maxDailyHours: loadedTeacherProfile.maxDailyHours,
+          desiredLessonsPerWeek: parsed,
+          colorCode: loadedTeacherProfile.colorCode,
+          qualifiedStyleIds: loadedTeacherProfile.qualifiedStyles.map((s) => s.id),
+        })
+      } else {
+        setProfileError("Profile data is still loading. Please wait and try again.")
+        return
+      }
+      setProfileSuccess(true)
+      setTimeout(() => setProfileSuccess(false), 3000)
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Failed to save profile.")
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
   // ─── View student availability ─────────────────────────────────────────────
   const handleViewAvailability = async (student: StudentResponse) => {
     setAvailabilityModalStudent(student)
@@ -185,6 +268,78 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ─── Lesson Preferences card (STUDENT & TEACHER only) ─────────── */}
+        {(isStudent || isTeacher) && (
+          <Card className="bg-slate-900/80 border-slate-800">
+            <CardContent className="p-6 space-y-4">
+              <CardTitle className="text-xl text-white">Lesson Preferences</CardTitle>
+              <CardDescription>
+                Tell the solver how many lessons per week you'd like to have scheduled.
+              </CardDescription>
+
+              {profileSuccess && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-3 py-2 text-sm text-green-400">
+                  <CheckCircle className="h-4 w-4 shrink-0" />
+                  Saved successfully.
+                </div>
+              )}
+              {profileError && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-500/15 border border-red-500/30 px-3 py-2 text-sm text-red-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {profileError}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300" htmlFor="desired-lessons">
+                  Desired lessons per week
+                  <span className="ml-1 text-slate-500 font-normal">(optional)</span>
+                </label>
+                {profileLoading ? (
+                  <div className="flex items-center gap-2 text-slate-400 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading…</span>
+                  </div>
+                ) : (
+                  <input
+                    id="desired-lessons"
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g. 3"
+                    value={desiredLessonsPerWeek}
+                    onChange={(e) => {
+                      setDesiredLessonsPerWeek(e.target.value)
+                      setProfileError(null)
+                    }}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving || profileLoading || (isStudent ? !loadedStudentProfile : !loadedTeacherProfile)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {profileSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Preferences
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ─── Right column: Availability + Role-specific sections ─────────── */}

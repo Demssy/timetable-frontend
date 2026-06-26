@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback } from "react";
 import { groupsApi } from "@/api/groupsApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserRole } from "@/types/enums";
-import type { DanceGroupDetails } from "@/types/group";
+import type { DanceGroupDetails, GroupStudentDTO } from "@/types/group";
 import type { DayOfWeek } from "@/types/enums";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Users } from "lucide-react";
 
 // ── Helpers ──
 
@@ -36,11 +44,13 @@ function GroupCard({
   isStudent,
   onToggleEnroll,
   enrollingId,
+  onDetails,
 }: {
   group: DanceGroupDetails;
   isStudent: boolean;
   onToggleEnroll: (id: number, enrolled: boolean) => void;
   enrollingId: number | null;
+  onDetails: (group: DanceGroupDetails) => void;
 }) {
   const busy = enrollingId === group.id;
 
@@ -88,7 +98,13 @@ function GroupCard({
 
       {/* Footer */}
       <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-700">
-        <span className="text-sm text-slate-400">👥 {group.enrolledCount} students</span>
+        <button
+          onClick={() => onDetails(group)}
+          className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+        >
+          <Users className="size-4" />
+          {group.enrolledCount} students
+        </button>
 
         {isStudent && (
           <button
@@ -123,6 +139,12 @@ export default function GroupsPage() {
   const [error, setError] = useState<string | null>(null);
   const [enrollingId, setEnrollingId] = useState<number | null>(null);
 
+  // Details dialog state
+  const [detailsGroup, setDetailsGroup] = useState<DanceGroupDetails | null>(null);
+  const [students, setStudents] = useState<GroupStudentDTO[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsError, setStudentsError] = useState<string | null>(null);
+
   const fetchGroups = useCallback(async (t: Tab) => {
     setLoading(true);
     setError(null);
@@ -150,6 +172,21 @@ export default function GroupsPage() {
       setError(e instanceof Error ? e.message : "Enrollment action failed");
     } finally {
       setEnrollingId(null);
+    }
+  };
+
+  const handleOpenDetails = async (group: DanceGroupDetails) => {
+    setDetailsGroup(group);
+    setStudents([]);
+    setStudentsError(null);
+    setStudentsLoading(true);
+    try {
+      const data = await groupsApi.getStudents(group.id);
+      setStudents(data);
+    } catch (e: unknown) {
+      setStudentsError(e instanceof Error ? e.message : "Failed to load students");
+    } finally {
+      setStudentsLoading(false);
     }
   };
 
@@ -205,10 +242,54 @@ export default function GroupsPage() {
               isStudent={isStudent}
               onToggleEnroll={handleToggleEnroll}
               enrollingId={enrollingId}
+              onDetails={handleOpenDetails}
             />
           ))}
         </div>
       )}
+
+      {/* Students dialog */}
+      <Dialog open={!!detailsGroup} onOpenChange={(open) => { if (!open) setDetailsGroup(null); }}>
+        <DialogContent className="max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{detailsGroup?.name} — Students</DialogTitle>
+            <DialogDescription>
+              {detailsGroup?.danceStyleName}{detailsGroup?.danceLevel ? ` · ${detailsGroup.danceLevel.replace("_", " ")}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto mt-2">
+            {studentsLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-4 border-slate-600 border-t-white" />
+              </div>
+            ) : studentsError ? (
+              <p className="text-red-400 text-sm text-center py-6">{studentsError}</p>
+            ) : students.length === 0 ? (
+              <p className="text-slate-500 text-sm text-center py-6">No students enrolled yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {students.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-white">{s.fullName}</p>
+                      <p className="text-xs text-slate-400">{s.email}</p>
+                    </div>
+                    {s.danceLevel && (
+                      <span className={cn(
+                        "rounded-md border px-2 py-0.5 text-xs font-medium",
+                        LEVEL_COLORS[s.danceLevel] ?? "bg-slate-700 text-slate-300"
+                      )}>
+                        {s.danceLevel.replace("_", " ")}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

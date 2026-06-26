@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { DanceGroupDetails } from "@/types/group";
+import type { DanceGroupDetails, GroupStudentDTO } from "@/types/group";
 
 const BASE = "/api/groups";
 
@@ -13,5 +13,8 @@ export const groupsApi = {
 
   unenroll: (groupId: number) =>
     apiFetch<void>(`${BASE}/${groupId}/enroll`, { method: "DELETE" }),
+
+  getStudents: (groupId: number) =>
+    apiFetch<GroupStudentDTO[]>(`${BASE}/${groupId}/students`),
 };
 

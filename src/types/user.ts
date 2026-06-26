@@ -13,6 +13,17 @@ export interface StudentResponse {
   birthDate: string        // ISO 8601: "YYYY-MM-DD"
   danceLevel: DanceLevel
   parentContact: string | null
+  desiredLessonsPerWeek: number | null
+}
+
+// ─── Student Profile DTOs (for /api/students/me/profile) ─────────────────────
+
+export interface UpdateStudentProfileRequest {
+  fullName: string
+  birthDate: string
+  danceLevel: DanceLevel | string
+  parentContact: string | null
+  desiredLessonsPerWeek: number | null
 }
 
 // ─── Availability DTOs ────────────────────────────────────────────────────────

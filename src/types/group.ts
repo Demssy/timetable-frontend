@@ -1,5 +1,12 @@
 import type { DayOfWeek, DanceLevel } from "./enums";
 
+export interface GroupStudentDTO {
+  id: number;
+  fullName: string;
+  email: string;
+  danceLevel: string | null;
+}
+
 export interface GroupScheduleSlot {
   dayOfWeek: DayOfWeek;
   startTime: string;

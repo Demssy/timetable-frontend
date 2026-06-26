@@ -1,4 +1,4 @@
-import type { User, UpdateAvailabilityRequest } from "@/types/user"
+import type { User, UpdateAvailabilityRequest, StudentResponse, UpdateStudentProfileRequest } from "@/types/user"
 import type { TeacherResponse } from "@/types/teacher"
 
 const API_BASE = "/api/admin/users"
@@ -114,6 +114,27 @@ class UserService {
   async removePreferredTeacher(teacherId: number): Promise<void> {
     return this.request<void>(`${STUDENT_API}/me/preferred-teachers/${teacherId}`, {
       method: "DELETE",
+    })
+  }
+
+  // ─── Student: Profile ──────────────────────────────────────────────────────
+
+  /**
+   * Returns the current student's full profile including desiredLessonsPerWeek.
+   * Endpoint: GET /api/students/me/profile
+   */
+  async getStudentProfile(): Promise<StudentResponse> {
+    return this.request<StudentResponse>(`${STUDENT_API}/me/profile`)
+  }
+
+  /**
+   * Updates the current student's profile.
+   * Endpoint: PUT /api/students/me/profile
+   */
+  async updateStudentProfile(data: UpdateStudentProfileRequest): Promise<StudentResponse> {
+    return this.request<StudentResponse>(`${STUDENT_API}/me/profile`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 }

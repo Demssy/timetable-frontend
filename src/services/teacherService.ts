@@ -2,6 +2,7 @@ import type {
   TeacherResponse,
   CreateTeacherRequest,
   UpdateTeacherRequest,
+  UpdateTeacherProfileRequest,
   DanceStyleDTO,
 } from "@/types/teacher"
 import type { StudentResponse, WeeklyAvailability as WeeklyAvailabilityDTO } from "@/types/user"
@@ -108,6 +109,27 @@ class TeacherService {
     return this.request<{ weeklyAvailabilities: WeeklyAvailabilityDTO[] }>(
       `${API_BASE}/me/students/${studentId}/availability`
     )
+  }
+
+  // ─── Teacher: Profile ──────────────────────────────────────────────────────
+
+  /**
+   * Returns the current teacher's full profile including desiredLessonsPerWeek.
+   * Endpoint: GET /api/teachers/me/profile
+   */
+  async getMyTeacherProfile(): Promise<TeacherResponse> {
+    return this.request<TeacherResponse>(`${API_BASE}/me/profile`)
+  }
+
+  /**
+   * Updates the current teacher's profile.
+   * Endpoint: PUT /api/teachers/me/profile
+   */
+  async updateMyTeacherProfile(data: UpdateTeacherProfileRequest): Promise<TeacherResponse> {
+    return this.request<TeacherResponse>(`${API_BASE}/me/profile`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
   }
 }
 
