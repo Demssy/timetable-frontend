@@ -9,9 +9,10 @@ export interface TeacherResponse {
   id: number
   fullName: string
   email: string
-  maxDailyHours: number
-  colorCode: string
+  maxDailyHours: number | null
+  colorCode: string | null
   qualifiedStyles: DanceStyleDTO[]
+  desiredLessonsPerWeek: number | null
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────
@@ -35,4 +36,13 @@ export interface UpdateTeacherRequest {
   qualifiedStyleIds: number[]
 }
 
+// ─── Profile DTOs (for /api/teachers/me/profile) ──────────────────────────────
+
+export interface UpdateTeacherProfileRequest {
+  fullName: string
+  maxDailyHours: number | null
+  desiredLessonsPerWeek: number | null
+  colorCode: string | null
+  qualifiedStyleIds: number[] | null
+}
 

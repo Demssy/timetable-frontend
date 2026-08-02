@@ -1,28 +1,30 @@
 import type { DayOfWeek, DanceLevel, SolverStatus } from "@/types/enums"
+import type { TeacherResponse } from "@/types/teacher"
 
 // ─── Core DTOs ────────────────────────────────────────────────────────────────
 
 export interface RoomDTO {
-  id?: number
+  id: number
   name: string
   capacity: number
   allowsParallelPrivate: boolean
 }
 
 export interface TimeslotDTO {
-  id?: number
+  id: number
   dayOfWeek: DayOfWeek
   startTime: string   // "HH:mm:ss"
   endTime: string     // "HH:mm:ss"
 }
 
-export interface TeacherSummary {
+/** Mirrors backend StudentResponse.java — embedded in private lesson DTOs. */
+export interface StudentResponse {
   id: number
-  fullName: string
   email: string
-  maxDailyHours: number
-  colorCode: string
-  qualifiedStyles: string[]
+  fullName: string
+  birthDate: string           // ISO date: "YYYY-MM-DD"
+  danceLevel: DanceLevel | null
+  parentContact: string | null
 }
 
 export interface DanceGroupDTO {
@@ -31,9 +33,10 @@ export interface DanceGroupDTO {
   danceStyleId: number
   danceStyleName: string
   danceLevel: DanceLevel
-  minSize: number
+  minSize: number | null
   targetAgeRange: string | null
 }
+
 
 export interface UpsertDanceGroupRequest {
   name: string
@@ -45,23 +48,49 @@ export interface UpsertDanceGroupRequest {
 
 export interface ScheduledLessonDTO {
   id: number
-  teacher: TeacherSummary
-  danceGroup: DanceGroupDTO
+  teacher: TeacherResponse
+  /** null for private lessons (student-based). */
+  danceGroup: DanceGroupDTO | null
+  /** null for group lessons AND unmatched private lessons. */
+  student: StudentResponse | null
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
+  isActive: boolean
   timeslot: TimeslotDTO | null
   room: RoomDTO | null
+  // ── Cancellation fields ───────────────────────────────────────────────────
+  isCancelled: boolean
+  /** ID of the user (teacher or admin) who cancelled this lesson. */
+  cancelledById: number | null
+  /** ISO-8601 datetime string, e.g. "2026-05-07T18:30:00". */
+  cancelledAt: string | null
+  cancelReason: string | null
+}
+
+// ─── Lesson Category (3-way classification) ──────────────────────────────────
+
+export type LessonCategory = "group" | "private-matched" | "private-available"
+
+/** Classify a lesson into one of the three visual categories. */
+export function getLessonCategory(lesson: ScheduledLessonDTO): LessonCategory {
+  if (!lesson.isPrivate) return "group"
+  if (lesson.student != null) return "private-matched"
+  return "private-available"
 }
 
 // ─── Request DTOs ─────────────────────────────────────────────────────────────
 
 export interface CreateLessonRequest {
   teacherId: number
-  danceGroupId: number
+  /** Required for group lessons; null for private lessons. */
+  danceGroupId?: number | null
+  /** Required for private lessons; null for group lessons. */
+  studentId?: number | null
   durationMinutes: number
   isPrivate: boolean
   isPinned: boolean
+  isActive: boolean
   timeslotId?: number | null
   roomId?: number | null
 }
@@ -82,7 +111,7 @@ export interface ScheduleMetadataDTO {
   validFrom: string   // "YYYY-MM-DD"
   validTo: string     // "YYYY-MM-DD"
   createdAt?: string
-  status?: ScheduleStatus
+  status: ScheduleStatus
 }
 
 export interface CreateScheduleRequest {
@@ -96,16 +125,20 @@ export interface CreateScheduleRequest {
 export interface SolveResponse {
   scheduleId: number
   message: string
+  statusUrl: string   // informational only — use correct base path
 }
 
 export interface SolverStatusResponse {
   scheduleId: number
   status: SolverStatus
+  message: string
 }
 
 export interface ScheduleSolutionResponse {
   scheduleId: number
   score: string | null
+  hardScore: number
+  softScore: number
   fullyAssigned: boolean
   lessons: ScheduledLessonDTO[]
 }

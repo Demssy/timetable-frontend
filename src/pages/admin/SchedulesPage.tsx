@@ -1,13 +1,101 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { ChevronRight, Plus, Trash2, FolderOpen } from "lucide-react"
-import { format, addDays, parseISO } from "date-fns"
+import { ChevronRight, ChevronLeft, Plus, Trash2, FolderOpen, Globe, CalendarRange, Archive, FileText, ChevronDown } from "lucide-react"
+import { format, addDays, addWeeks, startOfWeek, endOfWeek } from "date-fns"
 import { scheduleApi } from "@/api/scheduleApi"
 import type { ScheduleMetadataDTO, CreateScheduleRequest } from "@/types/schedule"
+import { ScheduleStatus } from "@/types/schedule"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
+
+/** Visual badge that reflects the schedule's lifecycle status. */
+function StatusBadge({ status }: { status: ScheduleStatus | undefined }) {
+  if (!status) return <span className="text-muted-foreground text-xs">—</span>
+
+  const styles: Record<ScheduleStatus, string> = {
+    DRAFT:     "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+    PUBLISHED: "bg-green-500/15 text-green-400 border-green-500/30",
+    ARCHIVED:  "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  }
+
+  const icons: Record<ScheduleStatus, React.ReactNode> = {
+    DRAFT:     <FileText className="h-3 w-3" />,
+    PUBLISHED: <Globe className="h-3 w-3" />,
+    ARCHIVED:  <Archive className="h-3 w-3" />,
+  }
+
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold", styles[status])}>
+      {icons[status]}
+      {status}
+    </span>
+  )
+}
+
+// ─── Status change dropdown ────────────────────────────────────────────────────
+
+const STATUS_OPTIONS: { value: ScheduleStatus; label: string; icon: React.ReactNode; className: string }[] = [
+  { value: ScheduleStatus.DRAFT,     label: "Draft",     icon: <FileText className="h-3.5 w-3.5" />, className: "text-yellow-400 hover:bg-yellow-500/10" },
+  { value: ScheduleStatus.PUBLISHED, label: "Published", icon: <Globe className="h-3.5 w-3.5" />,    className: "text-green-400  hover:bg-green-500/10"  },
+  { value: ScheduleStatus.ARCHIVED,  label: "Archived",  icon: <Archive className="h-3.5 w-3.5" />,  className: "text-slate-400 hover:bg-slate-500/10"  },
+]
+
+function StatusDropdown({
+  current,
+  loading,
+  onSelect,
+}: {
+  current: ScheduleStatus | undefined
+  loading: boolean
+  onSelect: (s: ScheduleStatus) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={loading}
+        onClick={() => setOpen(prev => !prev)}
+        className="text-slate-300 hover:text-white gap-1 px-2"
+        title="Change status"
+      >
+        <ChevronDown className="h-3.5 w-3.5" />
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-8 z-40 w-36 rounded-lg border border-white/10 bg-slate-900 shadow-xl overflow-hidden">
+          {STATUS_OPTIONS.filter(o => o.value !== current).map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => { onSelect(opt.value); setOpen(false) }}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
+                opt.className
+              )}
+            >
+              {opt.icon}
+              Set {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function SchedulesPage() {
   const navigate = useNavigate()
@@ -15,13 +103,24 @@ export function SchedulesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: "", validFrom: "" })
+  const [form, setForm] = useState({ name: "" })
+  const [nameIsAuto, setNameIsAuto] = useState(true)
+  const [selectedWeek, setSelectedWeek] = useState<Date>(() =>
+    startOfWeek(new Date(), { weekStartsOn: 0 })
+  )
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [conflictSchedule, setConflictSchedule] = useState<ScheduleMetadataDTO | null>(null)
+
+  const autoName = (week: Date) => `Week of ${format(week, "dd MMM yyyy")}`
+  const [changingStatusId, setChangingStatusId] = useState<number | null>(null)
 
   const fetchSchedules = async () => {
-    setIsLoading(true); setError(null)
-    try { setSchedules(await scheduleApi.getAll()) }
+    setIsLoading(true); setError(null); setConflictSchedule(null)
+    try {
+      // Use admin endpoint to get ALL schedules (including DRAFT and ARCHIVED)
+      setSchedules(await scheduleApi.adminGetAll())
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to load schedules") }
     finally { setIsLoading(false) }
   }
@@ -31,30 +130,101 @@ export function SchedulesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim()) { setFormError("Name is required."); return }
-    if (!form.validFrom) { setFormError("Start date is required."); return }
     setIsSaving(true); setFormError(null)
     try {
-      const validFromDate = parseISO(form.validFrom)
-      const validToDate = addDays(validFromDate, 6)
       const payload: CreateScheduleRequest = {
         name: form.name,
-        validFrom: form.validFrom,
-        validTo: format(validToDate, "yyyy-MM-dd")
+        validFrom: format(selectedWeek, "yyyy-MM-dd"),
+        validTo: format(addDays(selectedWeek, 6), "yyyy-MM-dd"),
       }
       const created = await scheduleApi.create(payload)
       await fetchSchedules()
       setShowModal(false)
-      setForm({ name: "", validFrom: "" })
+      setForm({ name: "" })
       navigate(`/admin/schedules/${created.id}`)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to create")
     } finally { setIsSaving(false) }
   }
 
+  /** Change selected week; if name is still auto-generated, update it too. */
+  const changeWeek = (newWeek: Date) => {
+    setSelectedWeek(newWeek)
+    if (nameIsAuto) setForm({ name: autoName(newWeek) })
+  }
+
   const handleDelete = async (s: ScheduleMetadataDTO) => {
     if (!window.confirm(`Delete schedule "${s.name}"? This will remove all its lessons.`)) return
     try { await scheduleApi.delete(s.id); await fetchSchedules() }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete") }
+  }
+
+  /** Quick-archive the conflicting published schedule directly from the error banner. */
+  const handleQuickArchive = async (s: ScheduleMetadataDTO) => {
+    if (!window.confirm(`Archive "${s.name}"? After that you'll be able to publish the new schedule.`)) return
+    setChangingStatusId(s.id)
+    try {
+      const updated = await scheduleApi.archive(s.id)
+      setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
+      setError(null)
+      setConflictSchedule(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive")
+    } finally {
+      setChangingStatusId(null)
+    }
+  }
+
+  /** Change schedule status (DRAFT → PUBLISHED, PUBLISHED → ARCHIVED, etc.) */
+  const handleChangeStatus = async (s: ScheduleMetadataDTO, newStatus: ScheduleStatus) => {
+    if (newStatus === s.status) return
+    const confirmMsg =
+      newStatus === ScheduleStatus.PUBLISHED
+        ? `Publish "${s.name}"? Students and teachers will see it.`
+        : newStatus === ScheduleStatus.ARCHIVED
+        ? `Archive "${s.name}"? It will be hidden from the public.`
+        : `Revert "${s.name}" to Draft?`
+
+    if (!window.confirm(confirmMsg)) return
+    setChangingStatusId(s.id)
+    setError(null)
+    try {
+      let updated: ScheduleMetadataDTO
+      if (newStatus === ScheduleStatus.PUBLISHED) {
+        updated = await scheduleApi.publish(s.id)
+      } else if (newStatus === ScheduleStatus.ARCHIVED) {
+        updated = await scheduleApi.archive(s.id)
+      } else {
+        updated = await scheduleApi.revertToDraft(s.id)
+      }
+      setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
+    } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : "Failed to change status"
+
+      if (newStatus === ScheduleStatus.PUBLISHED) {
+        // Find any PUBLISHED schedule whose dates overlap with the one being published
+        const conflict = schedules.find(sc =>
+          sc.id !== s.id &&
+          sc.status === ScheduleStatus.PUBLISHED &&
+          sc.validFrom <= s.validTo &&
+          sc.validTo >= s.validFrom
+        )
+        if (conflict) {
+          setConflictSchedule(conflict)
+          setError(
+            `Cannot publish "${s.name}": schedule "${conflict.name}" (${conflict.validFrom} — ${conflict.validTo}) is already published for an overlapping week. Archive it first.`
+          )
+        } else {
+          setConflictSchedule(null)
+          setError(`Cannot publish "${s.name}": ${rawMsg}. Make sure no other schedule is published for the same week — archive it first.`)
+        }
+      } else {
+        setConflictSchedule(null)
+        setError(rawMsg)
+      }
+    } finally {
+      setChangingStatusId(null)
+    }
   }
 
   return (
@@ -69,13 +239,41 @@ export function SchedulesPage() {
         <h1 className="text-3xl font-bold text-white">Schedules</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={fetchSchedules}>Refresh</Button>
-          <Button onClick={() => { setFormError(null); setShowModal(true) }}>
+          <Button onClick={() => {
+            const week = startOfWeek(new Date(), { weekStartsOn: 0 })
+            setFormError(null)
+            setSelectedWeek(week)
+            setForm({ name: autoName(week) })
+            setNameIsAuto(true)
+            setShowModal(true)
+          }}>
             <Plus className="h-4 w-4 mr-2" />Create Schedule
           </Button>
         </div>
       </div>
 
-      {error && <div className="bg-destructive/15 text-destructive p-4 rounded-md">{error}</div>}
+      {error && (
+        <div className="bg-destructive/15 border border-destructive/30 text-destructive p-4 rounded-md space-y-2">
+          <p className="text-sm font-medium">{error}</p>
+          {conflictSchedule && (
+            <div className="flex items-center gap-3 pt-1">
+              <span className="text-xs text-destructive/80">
+                Conflicting schedule: <strong>"{conflictSchedule.name}"</strong> ({conflictSchedule.validFrom} — {conflictSchedule.validTo})
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 shrink-0"
+                disabled={changingStatusId === conflictSchedule.id}
+                onClick={() => handleQuickArchive(conflictSchedule)}
+              >
+                <Archive className="h-3 w-3 mr-1" />
+                {changingStatusId === conflictSchedule.id ? "Archiving…" : "Archive it"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -90,14 +288,15 @@ export function SchedulesPage() {
                   <th className="h-10 px-4 font-medium">ID</th>
                   <th className="h-10 px-4 font-medium">Name</th>
                   <th className="h-10 px-4 font-medium">Validity Period</th>
+                  <th className="h-10 px-4 font-medium">Status</th>
                   <th className="h-10 px-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={4} className="h-24 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={5} className="h-24 text-center text-muted-foreground">Loading...</td></tr>
                 ) : schedules.length === 0 ? (
-                  <tr><td colSpan={4} className="h-24 text-center text-muted-foreground">No schedules yet. Create one!</td></tr>
+                  <tr><td colSpan={5} className="h-24 text-center text-muted-foreground">No schedules yet. Create one!</td></tr>
                 ) : schedules.map(s => (
                   <tr key={s.id} className="border-b transition-colors hover:bg-muted/50">
                     <td className="p-4 text-muted-foreground">{s.id}</td>
@@ -105,12 +304,25 @@ export function SchedulesPage() {
                     <td className="p-4 font-mono text-muted-foreground">
                       {s.validFrom} <span className="text-slate-600">to</span> {s.validTo}
                     </td>
+                    <td className="p-4">
+                      <StatusBadge status={s.status} />
+                    </td>
                     <td className="p-4 text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/schedules/${s.id}`)}>
                           <FolderOpen className="h-3.5 w-3.5 mr-1" />Open
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(s)}>
+                        {/* Status change dropdown */}
+                        <StatusDropdown
+                          current={s.status}
+                          loading={changingStatusId === s.id}
+                          onSelect={(newStatus) => handleChangeStatus(s, newStatus)}
+                        />
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDelete(s)}
+                        >
                           <Trash2 className="h-3.5 w-3.5 mr-1" />Delete
                         </Button>
                       </div>
@@ -131,21 +343,95 @@ export function SchedulesPage() {
               <CardDescription>Define a new weekly timetable.</CardDescription>
             </CardHeader>
             <form onSubmit={handleCreate}>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
                 {formError && <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">{formError}</div>}
+
+                {/* Schedule name */}
                 <div className="space-y-2">
                   <Label>Schedule Name</Label>
-                  <Input placeholder="Week 1 — Spring 2026" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
+                  <Input
+                    placeholder={autoName(selectedWeek)}
+                    value={form.name}
+                    onChange={e => {
+                      setForm(p => ({ ...p, name: e.target.value }))
+                      setNameIsAuto(false)
+                    }}
+                    required
+                  />
                 </div>
+
+                {/* Week picker */}
                 <div className="space-y-2">
-                  <Label>Start Date</Label>
-                  <Input type="date" value={form.validFrom} onChange={e => setForm(p => ({ ...p, validFrom: e.target.value }))} required />
-                  <p className="text-xs text-muted-foreground">Valid for 7 days from this date.</p>
+                  <Label className="flex items-center gap-1.5">
+                    <CalendarRange className="h-3.5 w-3.5" />
+                    Week
+                  </Label>
+
+                  {/* Week range display */}
+                  <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-center">
+                    <p className="text-base font-semibold text-foreground">
+                      {format(selectedWeek, "dd MMM")}
+                      <span className="mx-2 text-muted-foreground">—</span>
+                      {format(endOfWeek(selectedWeek, { weekStartsOn: 0 }), "dd MMM yyyy")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Sun {format(selectedWeek, "yyyy-MM-dd")} → Sat {format(addDays(selectedWeek, 6), "yyyy-MM-dd")}
+                    </p>
+                  </div>
+
+                  {/* Navigation buttons */}
+                  <div className="flex gap-1.5">
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="flex-1 gap-1"
+                      onClick={() => changeWeek(addWeeks(selectedWeek, -1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />Prev
+                    </Button>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="flex-1"
+                      onClick={() => changeWeek(startOfWeek(new Date(), { weekStartsOn: 0 }))}
+                    >
+                      Current
+                    </Button>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="flex-1 gap-1"
+                      onClick={() => changeWeek(addWeeks(selectedWeek, 1))}
+                    >
+                      Next<ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {/* Direct date jump — snaps to Sunday of the picked date */}
+                  <input
+                    type="date"
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={format(selectedWeek, "yyyy-MM-dd")}
+                    onChange={e => {
+                      if (!e.target.value) return
+                      const picked = new Date(e.target.value + "T00:00:00")
+                      changeWeek(startOfWeek(picked, { weekStartsOn: 0 }))
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Pick any day — the schedule will cover the full week (Sun–Sat).
+                  </p>
                 </div>
               </CardContent>
+
               <div className="flex justify-end gap-2 p-6 pt-0">
-                <Button type="button" variant="outline" onClick={() => setShowModal(false)} disabled={isSaving}>Cancel</Button>
-                <Button type="submit" disabled={isSaving}>{isSaving ? "Creating..." : "Create"}</Button>
+                <Button
+                  type="button" variant="outline"
+                  onClick={() => setShowModal(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? "Creating…" : "Create"}
+                </Button>
               </div>
             </form>
           </Card>

@@ -7,6 +7,8 @@ import {
   BookOpen,
   DoorOpen,
   Clock,
+  CalendarCheck,
+  TrendingUp,
 } from "lucide-react"
 import {
   Card,
@@ -75,6 +77,20 @@ const ADMIN_CATEGORIES: AdminCategory[] = [
     icon: Clock,
     available: true,
   },
+  {
+    title: "Availability",
+    description: "Manage weekly availability slots for teachers and students.",
+    href: "/admin/availability",
+    icon: CalendarCheck,
+    available: true,
+  },
+  {
+    title: "Solver Analytics",
+    description: "Real-time score charts, constraint breakdown, room heatmap & teacher load.",
+    href: "/admin/analytics",
+    icon: TrendingUp,
+    available: true,
+  },
 ]
 
 export default function AdminPage() {
@@ -126,7 +142,7 @@ export default function AdminPage() {
                 )}
               </CardHeader>
               <CardContent>
-                <CardDescription className="text-slate-400">
+                <CardDescription className="text-slate-400 line-clamp-2">
                   {category.description}
                 </CardDescription>
               </CardContent>
