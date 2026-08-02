@@ -34,8 +34,8 @@ const TIME_COL_W     = 64
 const TOTAL_ROWS     = (GRID_END_MIN - GRID_START_MIN) / ROW_MINUTES
 
 const DAY_ORDER: DayOfWeek[] = [
-  DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
-  DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY,
+  DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+  DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY,
 ]
 
 const DAY_LABEL: Record<string, string> = {

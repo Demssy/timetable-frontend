@@ -38,7 +38,7 @@ export interface ScheduledEvent {
   isCancelled: boolean
 }
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 /** First hour shown in the classic grid. Must stay in sync with TIME_SLOTS[0]. */
 const GRID_START_HOUR = 8
@@ -51,7 +51,7 @@ const TIME_SLOTS = [
 ]
 
 const DAY_TO_INDEX: Record<string, number> = {
-  MONDAY: 0, TUESDAY: 1, WEDNESDAY: 2, THURSDAY: 3, FRIDAY: 4, SATURDAY: 5, SUNDAY: 6,
+  SUNDAY: 0, MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6,
 }
 
 function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
@@ -94,12 +94,12 @@ function mapLessonToEvent(lesson: ScheduledLessonDTO): ScheduledEvent | null {
 }
 
 function formatWeekRange(weekStart: Date) {
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 })
   return `${format(weekStart, "dd MMM")} - ${format(weekEnd, "dd MMM yyyy")}`
 }
 
 function findScheduleForWeek(weekStart: Date, schedules: ScheduleMetadataDTO[]) {
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 })
   return schedules.find((schedule) => {
     const scheduleStart = parseISO(schedule.validFrom)
     const scheduleEnd = parseISO(schedule.validTo)
@@ -116,7 +116,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const isStudent = user?.role === UserRole.STUDENT
   const isAdmin = user?.role === UserRole.ADMIN
 
-  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }))
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null)
 
   // Переключатель между видами "table" и "classic" (оригинальный вид)
@@ -205,7 +205,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   }, [selectedWeekStart])
 
   const filteredEvents = useMemo(() => {
-    let base = events
+    const base = events
 
     // TEACHER: show only their own lessons, ignore the manual filter
     if (isTeacher && user) {
@@ -251,10 +251,10 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
   const goToPreviousWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, -1))
   const goToNextWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, 1))
-  const goToCurrentWeek = () => setSelectedWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const goToCurrentWeek = () => setSelectedWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))
   const handleWeekInputChange = (value: string) => {
     if (!value) return
-    setSelectedWeekStart(startOfWeek(parseISO(value), { weekStartsOn: 1 }))
+    setSelectedWeekStart(startOfWeek(parseISO(value), { weekStartsOn: 0 }))
   }
 
   // ── Cancel / Restore handlers ─────────────────────────────────────────────────

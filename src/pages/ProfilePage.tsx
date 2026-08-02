@@ -22,9 +22,10 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  // ─── Collapse state (collapsed by default) ────────────────────────────────
-  const [isWeeklyOpen, setIsWeeklyOpen] = useState(false)
+  // ─── Collapse state ────────────────────────────────────────────────────────
+  const [isWeeklyOpen, setIsWeeklyOpen] = useState(true)
   const [isExceptionsOpen, setIsExceptionsOpen] = useState(false)
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false)
 
   // ─── Preference state (STUDENT role) ──────────────────────────────────────
   const [allTeachers, setAllTeachers] = useState<TeacherResponse[]>([])
@@ -234,110 +235,102 @@ export default function ProfilePage() {
   return (
     <>
     <div className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
-      {/* ─── Left column: User Information ───────────────────────────────── */}
+      {/* ─── Left column ───────────────────────────────────────────────────── */}
       <div className="w-full lg:w-2/5 space-y-4">
         <h1 className="text-3xl font-bold text-white">Profile</h1>
-
-        <Card className="bg-slate-900/80 border-slate-800">
-          <CardContent className="p-6 space-y-4">
-            <CardTitle className="text-xl text-white">User Information</CardTitle>
-
-            <div className="space-y-3 text-slate-300">
-              <div className="flex justify-between border-b border-slate-700 pb-2">
-                <span className="font-semibold">Full Name:</span>
-                <span>{user?.fullName}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-700 pb-2">
-                <span className="font-semibold">Email:</span>
-                <span>{user?.email}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-700 pb-2">
-                <span className="font-semibold">Role:</span>
-                <span className="capitalize">{user?.role}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-700 pb-2">
-                <span className="font-semibold">Status:</span>
-                <span className={user?.isActive ? "text-green-400" : "text-red-400"}>
-                  {user?.isActive ? "Active" : "Inactive"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold">User ID:</span>
-                <span className="font-mono text-sm">{user?.id}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* ─── Lesson Preferences card (STUDENT & TEACHER only) ─────────── */}
         {(isStudent || isTeacher) && (
           <Card className="bg-slate-900/80 border-slate-800">
-            <CardContent className="p-6 space-y-4">
-              <CardTitle className="text-xl text-white">Lesson Preferences</CardTitle>
-              <CardDescription>
-                Tell the solver how many lessons per week you'd like to have scheduled.
-              </CardDescription>
-
-              {profileSuccess && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-3 py-2 text-sm text-green-400">
-                  <CheckCircle className="h-4 w-4 shrink-0" />
-                  Saved successfully.
-                </div>
-              )}
-              {profileError && (
-                <div className="flex items-center gap-2 rounded-lg bg-red-500/15 border border-red-500/30 px-3 py-2 text-sm text-red-400">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {profileError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300" htmlFor="desired-lessons">
-                  Desired lessons per week
-                  <span className="ml-1 text-slate-500 font-normal">(optional)</span>
-                </label>
-                {profileLoading ? (
-                  <div className="flex items-center gap-2 text-slate-400 py-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm">Loading…</span>
-                  </div>
-                ) : (
-                  <input
-                    id="desired-lessons"
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="e.g. 3"
-                    value={desiredLessonsPerWeek}
-                    onChange={(e) => {
-                      setDesiredLessonsPerWeek(e.target.value)
-                      setProfileError(null)
-                    }}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
+            {/* Clickable header */}
+            <button
+              type="button"
+              onClick={() => setIsPreferencesOpen(prev => !prev)}
+              className="w-full flex items-center justify-between p-6 text-left"
+            >
+              <div>
+                <CardTitle className="text-xl text-white">Lesson Preferences</CardTitle>
+                <CardDescription className="mt-1">
+                  Tell the solver how many lessons per week you'd like to have scheduled.
+                </CardDescription>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-300 ml-4",
+                  isPreferencesOpen && "rotate-180"
                 )}
-              </div>
+              />
+            </button>
 
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleSaveProfile}
-                  disabled={profileSaving || profileLoading || (isStudent ? !loadedStudentProfile : !loadedTeacherProfile)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {profileSaving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Preferences
-                    </>
+            {/* Collapsible body */}
+            <div className={cn(
+              "grid transition-all duration-300 ease-in-out",
+              isPreferencesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            )}>
+              <div className="overflow-hidden">
+                <div className="px-6 pb-6 space-y-4">
+                  {profileSuccess && (
+                    <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-3 py-2 text-sm text-green-400">
+                      <CheckCircle className="h-4 w-4 shrink-0" />
+                      Saved successfully.
+                    </div>
                   )}
-                </Button>
+                  {profileError && (
+                    <div className="flex items-center gap-2 rounded-lg bg-red-500/15 border border-red-500/30 px-3 py-2 text-sm text-red-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {profileError}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-300" htmlFor="desired-lessons">
+                      Desired lessons per week
+                      <span className="ml-1 text-slate-500 font-normal">(optional)</span>
+                    </label>
+                    {profileLoading ? (
+                      <div className="flex items-center gap-2 text-slate-400 py-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">Loading…</span>
+                      </div>
+                    ) : (
+                      <input
+                        id="desired-lessons"
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="e.g. 3"
+                        value={desiredLessonsPerWeek}
+                        onChange={(e) => {
+                          setDesiredLessonsPerWeek(e.target.value)
+                          setProfileError(null)
+                        }}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={profileSaving || profileLoading || (isStudent ? !loadedStudentProfile : !loadedTeacherProfile)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {profileSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Preferences
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </CardContent>
+            </div>
           </Card>
         )}
       </div>
@@ -345,19 +338,6 @@ export default function ProfilePage() {
       {/* ─── Right column: Availability + Role-specific sections ─────────── */}
       <div className="w-full lg:w-3/5 space-y-6">
         <h2 className="text-3xl font-bold text-white">Availability &amp; Schedule</h2>
-
-        {/* Feedback banners */}
-        {saveSuccess && (
-          <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-4 py-3 text-sm text-green-400">
-            <CheckCircle className="h-4 w-4 shrink-0" />
-            Schedule saved successfully.
-          </div>
-        )}
-        {saveError && (
-          <div className="rounded-lg bg-destructive/15 border border-destructive/30 px-4 py-3 text-sm text-red-400">
-            {saveError}
-          </div>
-        )}
 
         {/* Weekly availability card */}
         <Card className="bg-slate-900/80 border-slate-800">
@@ -387,11 +367,35 @@ export default function ProfilePage() {
             isWeeklyOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
           )}>
             <div className="overflow-hidden">
-              <div className="px-6 pb-6">
+              <div className="px-6 pb-6 space-y-4">
                 <WeeklyAvailabilityManager
                   value={weeklyAvailabilities}
                   onChange={setWeeklyAvailabilities}
                 />
+
+                {/* Prominent dedicated save button for weekly availability */}
+                {saveError && (
+                  <div className="rounded-lg bg-destructive/15 border border-destructive/30 px-4 py-3 text-sm text-red-400">
+                    {saveError}
+                  </div>
+                )}
+                {saveSuccess && (
+                  <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-4 py-3 text-sm text-green-400">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    Schedule saved successfully.
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving || hasValidationErrors}
+                    size="lg"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-900/40 min-w-52"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isSaving ? "Saving…" : "Save Weekly Availability"}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -425,27 +429,39 @@ export default function ProfilePage() {
             isExceptionsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
           )}>
             <div className="overflow-hidden">
-              <div className="px-6 pb-6">
+              <div className="px-6 pb-6 space-y-4">
                 <OneTimeUnavailabilityManager
                   value={oneTimeUnavailabilities}
                   onChange={setOneTimeUnavailabilities}
                 />
+
+                {/* Prominent dedicated save button for exception days */}
+                {saveError && (
+                  <div className="rounded-lg bg-destructive/15 border border-destructive/30 px-4 py-3 text-sm text-red-400">
+                    {saveError}
+                  </div>
+                )}
+                {saveSuccess && (
+                  <div className="flex items-center gap-2 rounded-lg bg-green-500/15 border border-green-500/30 px-4 py-3 text-sm text-green-400">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    Schedule saved successfully.
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving || hasValidationErrors}
+                    size="lg"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-900/40 min-w-52"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isSaving ? "Saving…" : "Save Exception Days"}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </Card>
-
-        {/* Save button */}
-        <div className="flex justify-end">
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || hasValidationErrors}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-36"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? "Saving…" : "Save Schedule"}
-          </Button>
-        </div>
 
         {/* ── STUDENT: Preferred Teachers for Private Lessons ────────────── */}
         {isStudent && (

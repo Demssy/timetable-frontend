@@ -70,10 +70,29 @@ export interface LoginRequest {
   password: string
 }
 
+/** Sent to POST /api/auth/register */
 export interface RegisterRequest {
   email: string
   password: string
   fullName: string
   birthDate: string
+  /** STUDENT | TEACHER — determines which extra fields are used */
+  role: UserRole
+
+  // ── Student-only ──────────────────────────────────────────────────────────
+  /** Initial dance level (students only) */
+  danceLevel?: DanceLevel
+  /** Contact for parent/guardian — required when student is a minor */
+  parentContact?: string | null
+  /** How many lessons per week the student desires */
+  desiredLessonsPerWeek?: number | null
+
+  // ── Teacher-only ──────────────────────────────────────────────────────────
+  /** Phone number for scheduling coordination */
+  phone?: string | null
+  /** Dance style IDs the teacher can teach */
+  qualifiedStyleIds?: number[]
+  /** Short biography / teaching experience */
+  bio?: string | null
 }
 

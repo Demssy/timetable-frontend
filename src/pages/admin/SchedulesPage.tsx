@@ -104,15 +104,19 @@ export function SchedulesPage() {
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: "" })
+  const [nameIsAuto, setNameIsAuto] = useState(true)
   const [selectedWeek, setSelectedWeek] = useState<Date>(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 })
+    startOfWeek(new Date(), { weekStartsOn: 0 })
   )
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [conflictSchedule, setConflictSchedule] = useState<ScheduleMetadataDTO | null>(null)
+
+  const autoName = (week: Date) => `Week of ${format(week, "dd MMM yyyy")}`
   const [changingStatusId, setChangingStatusId] = useState<number | null>(null)
 
   const fetchSchedules = async () => {
-    setIsLoading(true); setError(null)
+    setIsLoading(true); setError(null); setConflictSchedule(null)
     try {
       // Use admin endpoint to get ALL schedules (including DRAFT and ARCHIVED)
       setSchedules(await scheduleApi.adminGetAll())
@@ -143,10 +147,32 @@ export function SchedulesPage() {
     } finally { setIsSaving(false) }
   }
 
+  /** Change selected week; if name is still auto-generated, update it too. */
+  const changeWeek = (newWeek: Date) => {
+    setSelectedWeek(newWeek)
+    if (nameIsAuto) setForm({ name: autoName(newWeek) })
+  }
+
   const handleDelete = async (s: ScheduleMetadataDTO) => {
     if (!window.confirm(`Delete schedule "${s.name}"? This will remove all its lessons.`)) return
     try { await scheduleApi.delete(s.id); await fetchSchedules() }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete") }
+  }
+
+  /** Quick-archive the conflicting published schedule directly from the error banner. */
+  const handleQuickArchive = async (s: ScheduleMetadataDTO) => {
+    if (!window.confirm(`Archive "${s.name}"? After that you'll be able to publish the new schedule.`)) return
+    setChangingStatusId(s.id)
+    try {
+      const updated = await scheduleApi.archive(s.id)
+      setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
+      setError(null)
+      setConflictSchedule(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive")
+    } finally {
+      setChangingStatusId(null)
+    }
   }
 
   /** Change schedule status (DRAFT → PUBLISHED, PUBLISHED → ARCHIVED, etc.) */
@@ -173,7 +199,29 @@ export function SchedulesPage() {
       }
       setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to change status")
+      const rawMsg = err instanceof Error ? err.message : "Failed to change status"
+
+      if (newStatus === ScheduleStatus.PUBLISHED) {
+        // Find any PUBLISHED schedule whose dates overlap with the one being published
+        const conflict = schedules.find(sc =>
+          sc.id !== s.id &&
+          sc.status === ScheduleStatus.PUBLISHED &&
+          sc.validFrom <= s.validTo &&
+          sc.validTo >= s.validFrom
+        )
+        if (conflict) {
+          setConflictSchedule(conflict)
+          setError(
+            `Cannot publish "${s.name}": schedule "${conflict.name}" (${conflict.validFrom} — ${conflict.validTo}) is already published for an overlapping week. Archive it first.`
+          )
+        } else {
+          setConflictSchedule(null)
+          setError(`Cannot publish "${s.name}": ${rawMsg}. Make sure no other schedule is published for the same week — archive it first.`)
+        }
+      } else {
+        setConflictSchedule(null)
+        setError(rawMsg)
+      }
     } finally {
       setChangingStatusId(null)
     }
@@ -192,9 +240,11 @@ export function SchedulesPage() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={fetchSchedules}>Refresh</Button>
           <Button onClick={() => {
+            const week = startOfWeek(new Date(), { weekStartsOn: 0 })
             setFormError(null)
-            setForm({ name: "" })
-            setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))
+            setSelectedWeek(week)
+            setForm({ name: autoName(week) })
+            setNameIsAuto(true)
             setShowModal(true)
           }}>
             <Plus className="h-4 w-4 mr-2" />Create Schedule
@@ -202,7 +252,28 @@ export function SchedulesPage() {
         </div>
       </div>
 
-      {error && <div className="bg-destructive/15 text-destructive p-4 rounded-md">{error}</div>}
+      {error && (
+        <div className="bg-destructive/15 border border-destructive/30 text-destructive p-4 rounded-md space-y-2">
+          <p className="text-sm font-medium">{error}</p>
+          {conflictSchedule && (
+            <div className="flex items-center gap-3 pt-1">
+              <span className="text-xs text-destructive/80">
+                Conflicting schedule: <strong>"{conflictSchedule.name}"</strong> ({conflictSchedule.validFrom} — {conflictSchedule.validTo})
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 shrink-0"
+                disabled={changingStatusId === conflictSchedule.id}
+                onClick={() => handleQuickArchive(conflictSchedule)}
+              >
+                <Archive className="h-3 w-3 mr-1" />
+                {changingStatusId === conflictSchedule.id ? "Archiving…" : "Archive it"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -279,9 +350,12 @@ export function SchedulesPage() {
                 <div className="space-y-2">
                   <Label>Schedule Name</Label>
                   <Input
-                    placeholder={`Week of ${format(selectedWeek, "dd MMM yyyy")}`}
+                    placeholder={autoName(selectedWeek)}
                     value={form.name}
-                    onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                    onChange={e => {
+                      setForm(p => ({ ...p, name: e.target.value }))
+                      setNameIsAuto(false)
+                    }}
                     required
                   />
                 </div>
@@ -298,10 +372,10 @@ export function SchedulesPage() {
                     <p className="text-base font-semibold text-foreground">
                       {format(selectedWeek, "dd MMM")}
                       <span className="mx-2 text-muted-foreground">—</span>
-                      {format(endOfWeek(selectedWeek, { weekStartsOn: 1 }), "dd MMM yyyy")}
+                      {format(endOfWeek(selectedWeek, { weekStartsOn: 0 }), "dd MMM yyyy")}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Mon {format(selectedWeek, "yyyy-MM-dd")} → Sun {format(addDays(selectedWeek, 6), "yyyy-MM-dd")}
+                      Sun {format(selectedWeek, "yyyy-MM-dd")} → Sat {format(addDays(selectedWeek, 6), "yyyy-MM-dd")}
                     </p>
                   </div>
 
@@ -310,27 +384,27 @@ export function SchedulesPage() {
                     <Button
                       type="button" variant="outline" size="sm"
                       className="flex-1 gap-1"
-                      onClick={() => setSelectedWeek(prev => addWeeks(prev, -1))}
+                      onClick={() => changeWeek(addWeeks(selectedWeek, -1))}
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />Prev
                     </Button>
                     <Button
                       type="button" variant="outline" size="sm"
                       className="flex-1"
-                      onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                      onClick={() => changeWeek(startOfWeek(new Date(), { weekStartsOn: 0 }))}
                     >
                       Current
                     </Button>
                     <Button
                       type="button" variant="outline" size="sm"
                       className="flex-1 gap-1"
-                      onClick={() => setSelectedWeek(prev => addWeeks(prev, 1))}
+                      onClick={() => changeWeek(addWeeks(selectedWeek, 1))}
                     >
                       Next<ChevronRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>
 
-                  {/* Direct date jump — snaps to Monday of the picked date */}
+                  {/* Direct date jump — snaps to Sunday of the picked date */}
                   <input
                     type="date"
                     className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -338,11 +412,11 @@ export function SchedulesPage() {
                     onChange={e => {
                       if (!e.target.value) return
                       const picked = new Date(e.target.value + "T00:00:00")
-                      setSelectedWeek(startOfWeek(picked, { weekStartsOn: 1 }))
+                      changeWeek(startOfWeek(picked, { weekStartsOn: 0 }))
                     }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Pick any day — the schedule will cover the full week (Mon–Sun).
+                    Pick any day — the schedule will cover the full week (Sun–Sat).
                   </p>
                 </div>
               </CardContent>

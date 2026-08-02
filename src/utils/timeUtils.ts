@@ -42,13 +42,13 @@ export const DAY_LABELS_FULL: Record<DayOfWeek, string> = {
 };
 
 export const DAYS_ORDER: DayOfWeek[] = [
+  'SUNDAY',
   'MONDAY',
   'TUESDAY',
   'WEDNESDAY',
   'THURSDAY',
   'FRIDAY',
   'SATURDAY',
-  'SUNDAY',
 ];
 
 /** Returns initials from a full name: "Иван Иванов" → "ИИ" */

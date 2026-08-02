@@ -7,7 +7,10 @@ import type { WeeklyAvailability } from "@/types/user"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DAY_ORDER = Object.values(DayOfWeek)
+const DAY_ORDER = [
+  DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+  DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY,
+]
 
 const DAY_LABELS: Record<string, string> = {
   MONDAY:    "Monday",
@@ -70,9 +73,9 @@ export function WeeklyAvailabilityManager({ value, onChange }: WeeklyAvailabilit
         </p>
       )}
 
-      {/* Header row — only shown when there are items */}
+      {/* Header row — only shown on larger screens when there are items */}
       {value.length > 0 && (
-        <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-1 text-xs font-medium text-slate-400 uppercase tracking-wide">
+        <div className="hidden sm:grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-1 text-xs font-medium text-slate-400 uppercase tracking-wide">
           <span>Day</span>
           <span>Start Time</span>
           <span>End Time</span>
@@ -83,55 +86,61 @@ export function WeeklyAvailabilityManager({ value, onChange }: WeeklyAvailabilit
       {value.map((item, idx) => {
         const invalid = !isValidRange(item.startTime, item.endTime)
         return (
-          <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
-            {/* Day of week select */}
-            <select
-              value={item.dayOfWeek}
-              onChange={e => updateRow(idx, "dayOfWeek", e.target.value as typeof item.dayOfWeek)}
-              className="h-9 rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-500"
-            >
-              {DAY_ORDER.map(day => (
-                <option key={day} value={day}>{DAY_LABELS[day]}</option>
-              ))}
-            </select>
+          <div
+            key={idx}
+            className="rounded-lg border border-slate-700 bg-slate-800/40 p-2.5 sm:p-0 sm:border-0 sm:bg-transparent sm:rounded-none"
+          >
+            <div className="grid grid-cols-3 sm:grid-cols-[1fr_1fr_1fr_auto] gap-1.5 sm:gap-2 sm:items-center">
+              {/* Day of week select — dynamic width, same as time inputs */}
+              <select
+                value={item.dayOfWeek}
+                onChange={e => updateRow(idx, "dayOfWeek", e.target.value as typeof item.dayOfWeek)}
+                className="w-full min-w-0 h-9 rounded-md border border-slate-700 bg-slate-800 px-1.5 sm:px-3 py-1 text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-slate-500"
+              >
+                {DAY_ORDER.map(day => (
+                  <option key={day} value={day}>{DAY_LABELS[day]}</option>
+                ))}
+              </select>
 
-            {/* Start time */}
-            <Input
-              type="time"
-              value={toInputTime(item.startTime)}
-              onChange={e => updateRow(idx, "startTime", toApiTime(e.target.value))}
-              className={cn(
-                "bg-slate-800 border-slate-700 text-white",
-                invalid && "border-red-500 focus-visible:border-red-500"
-              )}
-            />
+              {/* Start time */}
+              <Input
+                type="time"
+                value={toInputTime(item.startTime)}
+                onChange={e => updateRow(idx, "startTime", toApiTime(e.target.value))}
+                className={cn(
+                  "w-full min-w-0 bg-slate-800 border-slate-700 text-white px-1.5 sm:px-3 text-xs sm:text-sm",
+                  invalid && "border-red-500 focus-visible:border-red-500"
+                )}
+              />
 
-            {/* End time */}
-            <Input
-              type="time"
-              value={toInputTime(item.endTime)}
-              onChange={e => updateRow(idx, "endTime", toApiTime(e.target.value))}
-              className={cn(
-                "bg-slate-800 border-slate-700 text-white",
-                invalid && "border-red-500 focus-visible:border-red-500"
-              )}
-            />
+              {/* End time */}
+              <Input
+                type="time"
+                value={toInputTime(item.endTime)}
+                onChange={e => updateRow(idx, "endTime", toApiTime(e.target.value))}
+                className={cn(
+                  "w-full min-w-0 bg-slate-800 border-slate-700 text-white px-1.5 sm:px-3 text-xs sm:text-sm",
+                  invalid && "border-red-500 focus-visible:border-red-500"
+                )}
+              />
 
-            {/* Delete button */}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => removeRow(idx)}
-              className="text-slate-400 hover:text-red-400"
-              title="Remove row"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+              {/* Delete button — full width row on mobile, compact icon on desktop */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => removeRow(idx)}
+                className="col-span-3 sm:col-span-1 justify-center sm:justify-start text-slate-400 hover:text-red-400 w-full sm:w-auto sm:h-9 sm:px-2"
+                title="Remove row"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="sm:hidden">Remove</span>
+              </Button>
+            </div>
 
             {/* Inline validation error */}
             {invalid && (
-              <p className="col-span-4 text-xs text-red-400 -mt-1 pl-1">
+              <p className="text-xs text-red-400 mt-1.5">
                 Start time must be before end time.
               </p>
             )}

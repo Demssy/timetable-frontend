@@ -45,14 +45,14 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
         const invalid = !isValidRange(item.startTime, item.endTime)
         return (
           <div key={idx} className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 space-y-2">
-            <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
-              <div className="space-y-1">
+            <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 sm:items-end">
+              <div className="space-y-1 col-span-2 sm:col-span-1">
                 <label className="text-xs text-slate-400">Date</label>
                 <Input
                   type="date"
                   value={item.date}
                   onChange={e => updateRow(idx, "date", e.target.value)}
-                  className="bg-slate-800 border-slate-700 text-white"
+                  className="bg-slate-800 border-slate-700 text-white w-full"
                 />
               </div>
               <div className="space-y-1">
@@ -61,7 +61,7 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
                   type="time"
                   value={toInputTime(item.startTime)}
                   onChange={e => updateRow(idx, "startTime", toApiTime(e.target.value))}
-                  className={cn("bg-slate-800 border-slate-700 text-white", invalid && "border-red-500")}
+                  className={cn("bg-slate-800 border-slate-700 text-white w-full", invalid && "border-red-500")}
                 />
               </div>
               <div className="space-y-1">
@@ -70,18 +70,19 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
                   type="time"
                   value={toInputTime(item.endTime)}
                   onChange={e => updateRow(idx, "endTime", toApiTime(e.target.value))}
-                  className={cn("bg-slate-800 border-slate-700 text-white", invalid && "border-red-500")}
+                  className={cn("bg-slate-800 border-slate-700 text-white w-full", invalid && "border-red-500")}
                 />
               </div>
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="sm"
                 onClick={() => removeRow(idx)}
-                className="text-slate-400 hover:text-red-400"
+                className="text-slate-400 hover:text-red-400 justify-center sm:justify-start w-full sm:w-auto sm:h-9 sm:px-2"
                 title="Remove"
               >
                 <Trash2 className="h-4 w-4" />
+                <span className="sm:hidden">Remove</span>
               </Button>
             </div>
 

@@ -70,6 +70,7 @@ function normalizeLesson(raw: RawLesson): ScheduledLessonDTO {
         maxDailyHours: null,
         colorCode: "#9ca3af",
         qualifiedStyles: [],
+        desiredLessonsPerWeek: 3
       }
 
   // Private lessons have no dance group — use null instead of a placeholder.

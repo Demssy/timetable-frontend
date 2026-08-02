@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
-import { ChevronRight, Plus, Trash2, Pencil, Search, X } from "lucide-react"
+import { ChevronRight, Plus, Trash2, Pencil, Search, X, Shapes } from "lucide-react"
 import { teacherService } from "@/services/teacherService"
 import { userService } from "@/services/userService"
+import { danceStyleApi } from "@/api/danceStyleApi"
 import type { TeacherResponse, CreateTeacherRequest, UpdateTeacherRequest, DanceStyleDTO } from "@/types/teacher"
 import type { User } from "@/types/user"
 import {
@@ -42,17 +43,6 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   qualifiedStyleIds: [],
 }
 
-// Fallback dictionary aligned with current backend dance_styles table.
-const DEFAULT_DANCE_STYLES: DanceStyleDTO[] = [
-  { id: 1, name: "Salsa" },
-  { id: 2, name: "Bachata" },
-  { id: 3, name: "Kizomba" },
-  { id: 4, name: "Hip Hop" },
-  { id: 5, name: "Contemporary" },
-  { id: 6, name: "Jazz Funk" },
-  { id: 7, name: "Ballroom" },
-  { id: 8, name: "Latin" },
-]
 
 // ─── UserAutocomplete ─────────────────────────────────────────────────────────
 
@@ -255,6 +245,12 @@ export function TeachersPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const [isStylesModalOpen, setIsStylesModalOpen] = useState(false)
+  const [newStyleName, setNewStyleName] = useState("")
+  const [stylesFormError, setStylesFormError] = useState<string | null>(null)
+  const [isStyleSaving, setIsStyleSaving] = useState(false)
+  const [deletingStyleId, setDeletingStyleId] = useState<number | null>(null)
+
   // ─── Data fetching ────────────────────────────────────────────────────────
 
   const fetchTeachers = async () => {
@@ -263,11 +259,11 @@ export function TeachersPage() {
     try {
       const [data, styleDictionary] = await Promise.all([
         teacherService.getAllTeachers(),
-        teacherService.getDanceStyles().catch(() => [] as DanceStyleDTO[]),
+        danceStyleApi.getAll(),
       ])
 
       const stylesFromTeachers = data.flatMap((teacher) => teacher.qualifiedStyles)
-      const mergedStyles = [...DEFAULT_DANCE_STYLES, ...styleDictionary, ...stylesFromTeachers]
+      const mergedStyles = [...styleDictionary, ...stylesFromTeachers]
       const uniqueStyles = Array.from(new Map(mergedStyles.map((style) => [style.id, style])).values())
         .sort((a, b) => a.id - b.id)
 
@@ -314,6 +310,19 @@ export function TeachersPage() {
     setModalMode(null)
     setEditingTeacher(null)
     setFormError(null)
+  }
+
+  const openStylesModal = () => {
+    setNewStyleName("")
+    setStylesFormError(null)
+    setIsStylesModalOpen(true)
+  }
+
+  const closeStylesModal = () => {
+    if (isStyleSaving || deletingStyleId !== null) return
+    setIsStylesModalOpen(false)
+    setNewStyleName("")
+    setStylesFormError(null)
   }
 
   // ─── Form handlers ────────────────────────────────────────────────────────
@@ -423,6 +432,43 @@ export function TeachersPage() {
     }
   }
 
+  const handleCreateStyle = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmedName = newStyleName.trim()
+
+    if (trimmedName.length < 2) {
+      setStylesFormError("Category name must be at least 2 characters.")
+      return
+    }
+
+    setIsStyleSaving(true)
+    setStylesFormError(null)
+    try {
+      await danceStyleApi.create(trimmedName)
+      await fetchTeachers()
+      setNewStyleName("")
+    } catch (err) {
+      setStylesFormError(err instanceof Error ? err.message : "Failed to create dance category")
+    } finally {
+      setIsStyleSaving(false)
+    }
+  }
+
+  const handleDeleteStyle = async (style: DanceStyleDTO) => {
+    if (!window.confirm(`Delete dance category "${style.name}"?`)) return
+
+    setDeletingStyleId(style.id)
+    setStylesFormError(null)
+    try {
+      await danceStyleApi.delete(style.id)
+      await fetchTeachers()
+    } catch (err) {
+      setStylesFormError(err instanceof Error ? err.message : "Failed to delete dance category")
+    } finally {
+      setDeletingStyleId(null)
+    }
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -439,6 +485,10 @@ export function TeachersPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-white">Teacher Management</h1>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={openStylesModal}>
+            <Shapes className="h-4 w-4 mr-2" />
+            Manage Dance Categories
+          </Button>
           <Button variant="outline" onClick={fetchTeachers}>Refresh</Button>
           <Button onClick={openCreateModal}>
             <Plus className="h-4 w-4 mr-2" />
@@ -669,6 +719,83 @@ export function TeachersPage() {
                 <Button type="button" variant="outline" onClick={closeModal} disabled={isSaving}>Cancel</Button>
                 <Button type="submit" disabled={isSaving}>
                   {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Dance Styles Modal ──────────────────────────────────────────────── */}
+      {isStylesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={closeStylesModal}>
+          <Card
+            className="w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader>
+              <CardTitle>Manage Dance Categories</CardTitle>
+              <CardDescription>Add or remove categories used in teacher specialization.</CardDescription>
+            </CardHeader>
+
+            <form onSubmit={handleCreateStyle}>
+              <CardContent className="space-y-4">
+                {stylesFormError && (
+                  <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">{stylesFormError}</div>
+                )}
+
+                <div className="space-y-2">
+                  <label htmlFor="newStyleName" className="text-sm font-medium">New Category Name</label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="newStyleName"
+                      value={newStyleName}
+                      onChange={(e) => setNewStyleName(e.target.value)}
+                      placeholder="e.g. Afro House"
+                      minLength={2}
+                      required
+                    />
+                    <Button type="submit" disabled={isStyleSaving || deletingStyleId !== null}>
+                      {isStyleSaving ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Existing Categories ({availableStyles.length})</p>
+                  <div className="rounded-md border border-input divide-y divide-border">
+                    {availableStyles.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No categories found.</p>
+                    ) : (
+                      availableStyles.map((style) => (
+                        <div key={style.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                          <span className="text-sm">{style.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            disabled={isStyleSaving || deletingStyleId === style.id}
+                            onClick={() => handleDeleteStyle(style)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            {deletingStyleId === style.id ? "Deleting..." : "Delete"}
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+
+              <div className="flex justify-end gap-2 p-6 pt-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeStylesModal}
+                  disabled={isStyleSaving || deletingStyleId !== null}
+                >
+                  Close
                 </Button>
               </div>
             </form>

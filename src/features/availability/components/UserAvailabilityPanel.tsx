@@ -118,7 +118,7 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
           {slots
             .slice()
             .sort((a, b) => {
-              const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+              const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
               return days.indexOf(a.dayOfWeek) - days.indexOf(b.dayOfWeek);
             })
             .map((slot) => (
