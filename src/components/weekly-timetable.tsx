@@ -119,7 +119,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }))
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null)
 
-  // Переключатель между видами "table" и "classic" (оригинальный вид)
+  // Toggle between the "table" and "classic" views ("classic" is the original view)
   const [viewMode, setViewMode] = useState<"table" | "classic">("table")
 
   const [filter, setFilter] = useState<number | "all">("all")
