@@ -7,8 +7,9 @@ import {
 } from "lucide-react"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell, Legend,
+  Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
+  Rectangle,
 } from "recharts"
 import { solverApi } from "@/api/solverApi"
 import { scheduleApi } from "@/api/scheduleApi"
@@ -60,11 +61,11 @@ type ActiveTab = "schedule" | "overall"
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const DAY_ORDER: string[] = [
-  "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY",
+  "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY",
 ]
 const DAY_SHORT: Record<string, string> = {
-  MONDAY: "Mon", TUESDAY: "Tue", WEDNESDAY: "Wed",
-  THURSDAY: "Thu", FRIDAY: "Fri", SATURDAY: "Sat", SUNDAY: "Sun",
+  SUNDAY: "Sun", MONDAY: "Mon", TUESDAY: "Tue", WEDNESDAY: "Wed",
+  THURSDAY: "Thu", FRIDAY: "Fri", SATURDAY: "Sat",
 }
 
 const MAX_SLOTS_PER_DAY = 14
@@ -100,6 +101,42 @@ const CHART_PALETTE = [
   "#2dd4bf", "#facc15",
 ]
 
+interface ColoredBarShapeProps {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  index?: number
+  payload?: { colorCode?: string }
+  fallbackFill: string
+  palette?: string[]
+}
+
+function ColoredBarShape({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  index = 0,
+  payload,
+  fallbackFill,
+  palette,
+}: ColoredBarShapeProps) {
+  const fill = payload?.colorCode || (palette ? palette[index % palette.length] : fallbackFill)
+
+  return (
+    <Rectangle
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      radius={[0, 4, 4, 0]}
+      fill={fill}
+      fillOpacity={0.85}
+    />
+  )
+}
+
 // ─── Custom Tooltip ──────────────────────────────────────────────────────────
 
 function ChartTooltip({
@@ -115,7 +152,7 @@ function ChartTooltip({
       <p className="text-xs text-slate-400 mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-sm font-semibold" style={{ color: entry.color }}>
-          {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(1) : entry.value}
+          {entry.name}: {entry.value.toFixed(1)}
         </p>
       ))}
     </div>
@@ -223,11 +260,12 @@ function TeacherWeeklyChart({ data }: { data: TeacherWeeklyItem[] }) {
               <YAxis type="category" dataKey="name" width={140} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
-              <Bar dataKey="hours" name="Scheduled Hours" radius={[0, 4, 4, 0]}>
-                {data.map((entry, i) => (
-                  <Cell key={i} fill={entry.colorCode || "#8b5cf6"} fillOpacity={0.85} />
-                ))}
-              </Bar>
+              <Bar
+                dataKey="hours"
+                name="Scheduled Hours"
+                radius={[0, 4, 4, 0]}
+                shape={(props) => <ColoredBarShape {...props} fallbackFill="#8b5cf6" />}
+              />
               <Bar dataKey="maxHours" name="Max Daily Hours" fill="#475569" fillOpacity={0.4} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -318,11 +356,12 @@ function TeacherTotalChart({ data }: { data: TeacherTotalItem[] }) {
               <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 10 }} unit="h" />
               <YAxis type="category" dataKey="name" width={140} tick={{ fill: "#cbd5e1", fontSize: 11 }} />
               <Tooltip content={<ChartTooltip/>} cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }} />
-              <Bar dataKey="totalHours" name="Total Hours" radius={[0, 4, 4, 0]}>
-                {data.map((entry, i) => (
-                  <Cell key={i} fill={entry.colorCode || CHART_PALETTE[i % CHART_PALETTE.length]} fillOpacity={0.85} />
-                ))}
-              </Bar>
+              <Bar
+                dataKey="totalHours"
+                name="Total Hours"
+                radius={[0, 4, 4, 0]}
+                shape={(props) => <ColoredBarShape {...props} fallbackFill="#8b5cf6" palette={CHART_PALETTE} />}
+              />
             </BarChart>
           </ResponsiveContainer>
         )}
