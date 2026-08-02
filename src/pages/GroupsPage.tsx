@@ -46,11 +46,11 @@ function GroupCard({
   enrollingId,
   onDetails,
 }: {
-  group: DanceGroupDetails;
-  isStudent: boolean;
-  onToggleEnroll: (id: number, enrolled: boolean) => void;
-  enrollingId: number | null;
-  onDetails: (group: DanceGroupDetails) => void;
+  readonly group: DanceGroupDetails;
+  readonly isStudent: boolean;
+  readonly onToggleEnroll: (id: number, enrolled: boolean) => void;
+  readonly enrollingId: number | null;
+  readonly onDetails: (group: DanceGroupDetails) => void;
 }) {
   const busy = enrollingId === group.id;
 
@@ -84,8 +84,8 @@ function GroupCard({
         {group.schedule.length === 0 ? (
           <p className="italic text-slate-500">No schedule assigned yet</p>
         ) : (
-          group.schedule.map((s, i) => (
-            <p key={i}>
+          group.schedule.map((s) => (
+            <p key={`${s.dayOfWeek}-${s.startTime}-${s.endTime}-${s.teacherName}`}>
               <span className="font-medium text-slate-200 inline-block w-10">
                 {DAY_SHORT[s.dayOfWeek]}
               </span>{" "}
@@ -99,6 +99,7 @@ function GroupCard({
       {/* Footer */}
       <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-700">
         <button
+          type="button"
           onClick={() => onDetails(group)}
           className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
         >
@@ -108,6 +109,7 @@ function GroupCard({
 
         {isStudent && (
           <button
+            type="button"
             disabled={busy}
             onClick={() => onToggleEnroll(group.id, group.enrolledByCurrentUser)}
             className={cn(
@@ -210,6 +212,7 @@ export default function GroupsPage() {
       <div className="flex gap-2">
         {(["all", "my"] as Tab[]).map((t) => (
           <button
+            type="button"
             key={t}
             onClick={() => setTab(t)}
             className={cn(

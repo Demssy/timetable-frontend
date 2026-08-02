@@ -5,20 +5,20 @@ import { Pin, MapPin, Clock, UserX, Ban, RotateCcw } from "lucide-react"
 import type { ScheduledEvent } from "./weekly-timetable.tsx"
 
 interface EventCardProps {
-  event: ScheduledEvent
-  onClick: () => void
-  isSelected: boolean
-  variant: "mobile" | "grid" | "horizontal"
+  readonly event: ScheduledEvent
+  readonly onClick: () => void
+  readonly isSelected: boolean
+  readonly variant: "mobile" | "grid" | "horizontal"
   /** Show "Cancel lesson" button on this card (TEACHER for own / ADMIN for any). */
-  canCancel?: boolean
+  readonly canCancel?: boolean
   /** Show "Restore" button on this card (ADMIN only, cancelled lessons). */
-  canRestore?: boolean
+  readonly canRestore?: boolean
   /** Called when the cancel button is clicked. */
-  onCancelClick?: (e: React.MouseEvent) => void
+  readonly onCancelClick?: (e: React.MouseEvent) => void
   /** Called when the restore button is clicked. */
-  onRestoreClick?: (e: React.MouseEvent) => void
+  readonly onRestoreClick?: (e: React.MouseEvent) => void
   /** Whether a cancel/restore action is in progress for this card. */
-  isActing?: boolean
+  readonly isActing?: boolean
 }
 
 /** Returns variant-specific styles depending on the lesson category. */
@@ -61,11 +61,11 @@ function ActionButton({
   disabled,
   onClick,
 }: {
-  label: string
-  icon: React.ReactNode
-  colorClass: string
-  disabled?: boolean
-  onClick: (e: React.MouseEvent) => void
+  readonly label: string
+  readonly icon: React.ReactNode
+  readonly colorClass: string
+  readonly disabled?: boolean
+  readonly onClick: (e: React.MouseEvent) => void
 }) {
   return (
     <button
@@ -85,6 +85,18 @@ function ActionButton({
       {label}
     </button>
   )
+}
+
+function getEventTitleClass(isCancelled: boolean, isAvailableSlot: boolean): string {
+  if (isCancelled) return "line-through text-muted-foreground"
+  if (isAvailableSlot) return "text-muted-foreground italic"
+  return "text-foreground"
+}
+
+function handleCardKeyDown(event: React.KeyboardEvent, onClick: () => void) {
+  if (event.key !== "Enter" && event.key !== " ") return
+  event.preventDefault()
+  onClick()
 }
 
 export function EventCard({
@@ -135,9 +147,10 @@ export function EventCard({
     return (
       <div
         role="button"
+        aria-pressed={isSelected}
         tabIndex={0}
         onClick={onClick}
-        onKeyDown={(e) => e.key === "Enter" && onClick()}
+        onKeyDown={(e) => handleCardKeyDown(e, onClick)}
         className={cn(
           "w-full rounded-md border border-border/50 border-l-4 p-3 text-left transition-all space-y-2.5 cursor-pointer",
           isSelected && "ring-2 ring-ring",
@@ -186,9 +199,10 @@ export function EventCard({
     return (
       <div
         role="button"
+        aria-pressed={isSelected}
         tabIndex={0}
         onClick={onClick}
-        onKeyDown={(e) => e.key === "Enter" && onClick()}
+        onKeyDown={(e) => handleCardKeyDown(e, onClick)}
         className={cn(
           "h-full w-full rounded border border-border/30 border-l-4 p-2 text-left transition-all cursor-pointer flex items-center justify-between gap-2 overflow-hidden",
           isSelected && "ring-2 ring-ring shadow-md hover:brightness-110",
@@ -210,7 +224,7 @@ export function EventCard({
           </div>
 
           <span
-            className={cn("font-bold leading-tight text-xs sm:text-sm truncate drop-shadow-sm mt-0.5", isCancelled && "line-through opacity-60", isAvailableSlot && !isCancelled && "italic text-muted-foreground")}
+            className={cn("font-bold leading-tight text-xs sm:text-sm truncate drop-shadow-sm mt-0.5", getEventTitleClass(isCancelled, isAvailableSlot))}
             style={isAvailableSlot || isCancelled ? undefined : { color: event.instructorColor }}
           >
             {event.title}
@@ -242,9 +256,10 @@ export function EventCard({
   return (
     <div
       role="button"
+      aria-pressed={isSelected}
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onKeyDown={(e) => handleCardKeyDown(e, onClick)}
       className={cn(
         "w-full h-full rounded border border-border/30 border-l-4 p-2.5 text-left transition-all cursor-pointer flex flex-col gap-1.5",
         isSelected && "ring-2 ring-ring shadow-md hover:brightness-110",
@@ -253,7 +268,7 @@ export function EventCard({
       style={dynamicStyle}
     >
       <div className="flex items-start justify-between gap-1 w-full">
-        <span className={cn("font-bold leading-tight text-sm", isCancelled && "line-through text-muted-foreground", !isCancelled && isAvailableSlot ? "text-muted-foreground italic" : !isCancelled ? "text-foreground" : "")}>
+        <span className={cn("font-bold leading-tight text-sm", getEventTitleClass(isCancelled, isAvailableSlot))}>
           {event.title}
         </span>
         <div className="flex gap-0.5 shrink-0 flex-wrap justify-end">

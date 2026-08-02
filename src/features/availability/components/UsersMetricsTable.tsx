@@ -7,18 +7,21 @@ import { parseTimeToMinutes, getInitials } from '@/utils/timeUtils';
 type RoleFilter = 'ALL' | 'TEACHER' | 'STUDENT';
 
 interface UsersMetricsTableProps {
-  users: UserResponse[];
-  lessons: ScheduledLessonDTO[];
-  selectedUserId: number | null;
-  onSelectUser: (id: number) => void;
-  isLoading: boolean;
+  readonly users: UserResponse[];
+  readonly lessons: ScheduledLessonDTO[];
+  readonly selectedUserId: number | null;
+  readonly onSelectUser: (id: number) => void;
+  readonly isLoading: boolean;
 }
+
+const SKELETON_CELL_KEYS = ['user', 'role', 'slots', 'hours', 'lessons', 'minutes'];
+const SKELETON_ROW_KEYS = ['first', 'second', 'third'];
 
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
-      {[...Array(6)].map((_, i) => (
-        <td key={i} className="px-4 py-3">
+      {SKELETON_CELL_KEYS.map((key) => (
+        <td key={key} className="px-4 py-3">
           <div className="h-4 bg-gray-700 rounded" />
         </td>
       ))}
@@ -71,6 +74,7 @@ export function UsersMetricsTable({
         <div className="flex gap-1">
           {ROLE_BUTTONS.map((btn) => (
             <button
+              type="button"
               key={btn.value}
               onClick={() => setRoleFilter(btn.value)}
               className={cn(
@@ -111,7 +115,7 @@ export function UsersMetricsTable({
           </thead>
           <tbody className="divide-y divide-gray-700/50">
             {isLoading
-              ? [...Array(3)].map((_, i) => <SkeletonRow key={i} />)
+              ? SKELETON_ROW_KEYS.map((key) => <SkeletonRow key={key} />)
               : filtered.map((u) => {
                   const userLessons = getUserLessons(u.id);
                   const totalLessonMinutes = userLessons.reduce(

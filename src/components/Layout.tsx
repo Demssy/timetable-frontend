@@ -271,6 +271,7 @@ export default function Layout() {
                         </Link>
 
                         <button
+                          type="button"
                           onClick={handleLogout}
                           className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
                         >

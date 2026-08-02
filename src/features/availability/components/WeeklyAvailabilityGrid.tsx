@@ -5,10 +5,10 @@ import type { WeeklyAvailabilityDTO } from '../types/availability.types';
 import { DAY_LABELS, DAYS_ORDER, formatTime, parseTimeToMinutes } from '@/utils/timeUtils';
 
 interface WeeklyAvailabilityGridProps {
-  slots: WeeklyAvailabilityDTO[];
-  userRole: 'TEACHER' | 'STUDENT';
-  onEditSlot: (slot: WeeklyAvailabilityDTO) => void;
-  onDeleteSlot: (slotId: number) => void;
+  readonly slots: WeeklyAvailabilityDTO[];
+  readonly userRole: 'TEACHER' | 'STUDENT';
+  readonly onEditSlot: (slot: WeeklyAvailabilityDTO) => void;
+  readonly onDeleteSlot: (slotId: number) => void;
 }
 
 const GRID_START_HOUR = 6;
@@ -106,6 +106,7 @@ export function WeeklyAvailabilityGrid({
                       {isHovered && (
                         <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/20 rounded">
                           <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); onEditSlot(slot); }}
                             className="p-0.5 bg-white rounded shadow hover:bg-gray-100"
                             title="Edit"
@@ -113,6 +114,7 @@ export function WeeklyAvailabilityGrid({
                             <Pencil className="w-3 h-3 text-gray-700" />
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); onDeleteSlot(slot.id); }}
                             className="p-0.5 bg-white rounded shadow hover:bg-red-50"
                             title="Delete"

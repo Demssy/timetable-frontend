@@ -17,15 +17,23 @@ import { cn } from "@/lib/utils"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const SCORE_PATTERN = /(-?\d+)hard\/(-?\d+)soft/
+
 function parseScore(score: string | null): { hard: number; soft: number } | null {
   if (!score) return null
-  const m = score.match(/(-?\d+)hard\/(-?\d+)soft/)
+  const m = SCORE_PATTERN.exec(score)
   return m ? { hard: Number(m[1]), soft: Number(m[2]) } : null
+}
+
+function getSolutionCardClassName(hasSolution: boolean, hardScore: number | undefined): string {
+  if (!hasSolution) return "border-slate-700/50 opacity-70"
+  if (hardScore !== undefined && hardScore < 0) return "border-red-500/40 bg-red-500/5"
+  return "border-green-500/40 bg-green-500/5"
 }
 
 // ─── Solver status badge ───────────────────────────────────────────────────────
 
-function SolverStatusBadge({ status }: { status: string | null }) {
+function SolverStatusBadge({ status }: { readonly status: string | null }) {
   if (!status || status === SolverStatus.NOT_SOLVING) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-700 px-3 py-1 text-sm font-medium text-slate-300">
@@ -69,7 +77,6 @@ export function ScheduleDetailPage() {
 
   const isSolving = status === SolverStatus.SOLVING_ACTIVE || status === SolverStatus.SOLVING_SCHEDULED
   const hasSolution = solution !== null && !!solution.lessons.length
-  console.log(solution)
   // ── CRITICAL: Reset all state immediately when navigating to a new schedule ─
   // This runs synchronously before any fetch, so the user never sees ghost data.
   useEffect(() => {
@@ -132,9 +139,7 @@ export function ScheduleDetailPage() {
   useEffect(() => {
     if (isSolving) {
       pollIntervalRef.current = setInterval(() => { fetchSolution() }, 2500)
-    } else {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    }
+    } else if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }
   }, [isSolving, fetchSolution])
 
@@ -262,17 +267,17 @@ export function ScheduleDetailPage() {
 
           <div className="flex gap-3 flex-wrap">
             {!isSolving && !hasSolution && (
-              <Button onClick={handleStartSolving} className="bg-green-600 hover:bg-green-700">
+              <Button type="button" onClick={handleStartSolving} className="bg-green-600 hover:bg-green-700">
                 <Play className="h-4 w-4 mr-2" />Start Solving
               </Button>
             )}
 
             {!isSolving && hasSolution && (
               <>
-                <Button onClick={handleRegenerate} className="bg-green-600 hover:bg-green-700">
+                <Button type="button" onClick={handleRegenerate} className="bg-green-600 hover:bg-green-700">
                   <RefreshCw className="h-4 w-4 mr-2" />Re-generate
                 </Button>
-                <Button variant="outline" onClick={() => navigate(`/admin/schedules/${id}/timetable`)}>
+                <Button type="button" variant="outline" onClick={() => navigate(`/admin/schedules/${id}/timetable`)}>
                   <LayoutGrid className="h-4 w-4 mr-2" />View Timetable
                 </Button>
               </>
@@ -280,10 +285,10 @@ export function ScheduleDetailPage() {
 
             {isSolving && (
               <>
-                <Button variant="destructive" onClick={handleStop}>
+                <Button type="button" variant="destructive" onClick={handleStop}>
                   <Square className="h-4 w-4 mr-2" />Stop
                 </Button>
-                <Button variant="outline" disabled={!hasSolution}
+                <Button type="button" variant="outline" disabled={!hasSolution}
                   onClick={() => navigate(`/admin/schedules/${id}/timetable`)}>
                   <LayoutGrid className="h-4 w-4 mr-2" />View Timetable
                 </Button>
@@ -296,11 +301,7 @@ export function ScheduleDetailPage() {
       {/* ─── Solution Status ─────────────────────────────────────────────── */}
       <Card className={cn(
         "border transition-colors",
-        !hasSolution
-          ? "border-slate-700/50 opacity-70"
-          : parsedScore && parsedScore.hard < 0
-            ? "border-red-500/40 bg-red-500/5"
-            : "border-green-500/40 bg-green-500/5"
+        getSolutionCardClassName(hasSolution, parsedScore?.hard)
       )}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -309,7 +310,7 @@ export function ScheduleDetailPage() {
               Timetable Solution
             </CardTitle>
             {hasSolution && (
-              <Button variant="ghost" size="sm" onClick={fetchSolution} disabled={isLoadingSolution}
+              <Button type="button" variant="ghost" size="sm" onClick={fetchSolution} disabled={isLoadingSolution}
                 className="text-slate-400 hover:text-white h-7 px-2">
                 <RefreshCw className={cn("h-3.5 w-3.5", isLoadingSolution && "animate-spin")} />
               </Button>

@@ -5,13 +5,24 @@ import { cn } from "@/lib/utils"
 import type { ScoreExplanationResponse } from "@/types/solver"
 
 interface ScoreExplanationPanelProps {
-  scheduleId: number | null
-  hardScore: number
-  explanation: ScoreExplanationResponse | null
-  isLoading: boolean
-  error: string | null
+  readonly scheduleId: number | null
+  readonly hardScore: number
+  readonly explanation: ScoreExplanationResponse | null
+  readonly isLoading: boolean
+  readonly error: string | null
   /** Called when the user clicks "Show Score Report" for the first time */
-  onRequestLoad: () => void
+  readonly onRequestLoad: () => void
+}
+
+function renderHardScore(score: number) {
+  if (score !== 0) return <span className="text-red-400 font-semibold">{score}</span>
+  return <span className="text-slate-600">—</span>
+}
+
+function renderSoftScore(score: number) {
+  if (score < 0) return <span className="text-orange-400">{score}</span>
+  if (score > 0) return <span className="text-green-400">+{score}</span>
+  return <span className="text-slate-600">—</span>
 }
 
 export function ScoreExplanationPanel({
@@ -46,6 +57,7 @@ export function ScoreExplanationPanel({
     )}>
       {/* Header / toggle */}
       <button
+        type="button"
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-white/5 transition-colors"
         onClick={handleToggle}
       >
@@ -95,7 +107,7 @@ export function ScoreExplanationPanel({
 
           {!isLoading && !error && !explanation && (
             <div className="py-4 text-center">
-              <Button variant="outline" size="sm" onClick={onRequestLoad}>Load constraint breakdown</Button>
+              <Button type="button" variant="outline" size="sm" onClick={onRequestLoad}>Load constraint breakdown</Button>
             </div>
           )}
 
@@ -115,9 +127,9 @@ export function ScoreExplanationPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {sortedViolations.map((v, idx) => (
+                  {sortedViolations.map((v) => (
                     <tr
-                      key={idx}
+                      key={v.constraintName}
                       className={cn(
                         "transition-colors",
                         v.hardScore !== 0 ? "bg-red-500/5 hover:bg-red-500/10" : "hover:bg-white/[0.03]",
@@ -127,18 +139,12 @@ export function ScoreExplanationPanel({
 
                       {/* Hard impact */}
                       <td className="py-2 pr-4 text-right font-mono">
-                        {v.hardScore !== 0
-                          ? <span className="text-red-400 font-semibold">{v.hardScore}</span>
-                          : <span className="text-slate-600">—</span>}
+                        {renderHardScore(v.hardScore)}
                       </td>
 
                       {/* Soft impact */}
                       <td className="py-2 pr-4 text-right font-mono">
-                        {v.softScore < 0
-                          ? <span className="text-orange-400">{v.softScore}</span>
-                          : v.softScore > 0
-                            ? <span className="text-green-400">+{v.softScore}</span>
-                            : <span className="text-slate-600">—</span>}
+                        {renderSoftScore(v.softScore)}
                       </td>
 
                       {/* Match count */}

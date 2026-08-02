@@ -14,8 +14,8 @@ const todayStr = (): string => new Date().toISOString().slice(0, 10)
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  value: OneTimeUnavailability[]
-  onChange: (items: OneTimeUnavailability[]) => void
+  readonly value: OneTimeUnavailability[]
+  readonly onChange: (items: OneTimeUnavailability[]) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -43,12 +43,14 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
 
       {value.map((item, idx) => {
         const invalid = !isValidRange(item.startTime, item.endTime)
+        const fieldId = `unavailability-${idx}`
         return (
           <div key={idx} className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 sm:items-end">
               <div className="space-y-1 col-span-2 sm:col-span-1">
-                <label className="text-xs text-slate-400">Date</label>
+                <label htmlFor={`${fieldId}-date`} className="text-xs text-slate-400">Date</label>
                 <Input
+                  id={`${fieldId}-date`}
                   type="date"
                   value={item.date}
                   onChange={e => updateRow(idx, "date", e.target.value)}
@@ -56,8 +58,9 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-slate-400">Start</label>
+                <label htmlFor={`${fieldId}-start`} className="text-xs text-slate-400">Start</label>
                 <Input
+                  id={`${fieldId}-start`}
                   type="time"
                   value={toInputTime(item.startTime)}
                   onChange={e => updateRow(idx, "startTime", toApiTime(e.target.value))}
@@ -65,8 +68,9 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-slate-400">End</label>
+                <label htmlFor={`${fieldId}-end`} className="text-xs text-slate-400">End</label>
                 <Input
+                  id={`${fieldId}-end`}
                   type="time"
                   value={toInputTime(item.endTime)}
                   onChange={e => updateRow(idx, "endTime", toApiTime(e.target.value))}
@@ -87,8 +91,9 @@ export function OneTimeUnavailabilityManager({ value, onChange }: Props) {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Reason (optional)</label>
+              <label htmlFor={`${fieldId}-reason`} className="text-xs text-slate-400">Reason (optional)</label>
               <Input
+                id={`${fieldId}-reason`}
                 type="text"
                 placeholder="e.g. Vacation, Doctor's appointment"
                 value={item.reason ?? ""}

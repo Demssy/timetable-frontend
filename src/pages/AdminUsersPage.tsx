@@ -139,7 +139,7 @@ export default function AdminUsersPage() {
 
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">User Management</h1>
-        <Button onClick={fetchUsers} variant="outline">Refresh List</Button>
+        <Button type="button" onClick={fetchUsers} variant="outline">Refresh List</Button>
       </div>
 
       {error && <div className="bg-destructive/15 text-destructive p-4 rounded-md">{error}</div>}
@@ -155,6 +155,7 @@ export default function AdminUsersPage() {
           <div className="flex flex-wrap gap-2">
             {ROLE_TABS.map(({ value, label, icon: Icon }) => (
               <button
+                type="button"
                 key={value}
                 onClick={() => setRoleFilter(value)}
                 className={cn(
@@ -229,7 +230,7 @@ export default function AdminUsersPage() {
                         /* ── Inline confirmation ── */
                         <div className="inline-flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground mr-1">Sure?</span>
-                          <Button
+                          <Button type="button"
                             variant="destructive"
                             size="sm"
                             disabled={deletingId === user.id}
@@ -237,7 +238,7 @@ export default function AdminUsersPage() {
                           >
                             {deletingId === user.id ? "Deleting…" : "Yes, delete"}
                           </Button>
-                          <Button
+                          <Button type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => setConfirmDeleteId(null)}
@@ -248,14 +249,14 @@ export default function AdminUsersPage() {
                       ) : (
                         /* ── Normal action buttons ── */
                         <div className="inline-flex items-center gap-1">
-                          <Button
+                          <Button type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEditClick(user)}
                           >
                             Edit
                           </Button>
-                          <Button
+                          <Button type="button"
                             variant="ghost"
                             size="sm"
                             disabled={user.id === currentUser?.id}
@@ -293,24 +294,24 @@ export default function AdminUsersPage() {
             <form onSubmit={handleSave}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Full Name</label>
-                  <Input name="fullName" value={formData.fullName || ""} onChange={handleInputChange} required />
+                  <label htmlFor="user-full-name" className="text-sm font-medium">Full Name</label>
+                  <Input id="user-full-name" name="fullName" value={formData.fullName || ""} onChange={handleInputChange} required />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Email</label>
-                  <Input name="email" type="email" value={formData.email || ""} onChange={handleInputChange} required />
+                  <label htmlFor="user-email" className="text-sm font-medium">Email</label>
+                  <Input id="user-email" name="email" type="email" value={formData.email || ""} onChange={handleInputChange} required />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Role</label>
-                    <select name="role" value={formData.role || UserRole.STUDENT} onChange={handleInputChange}
+                    <label htmlFor="user-role" className="text-sm font-medium">Role</label>
+                    <select id="user-role" name="role" value={formData.role || UserRole.STUDENT} onChange={handleInputChange}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                       {Object.values(UserRole).map(role => <option key={role} value={role}>{role}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Dance Level</label>
-                    <select name="danceLevel" value={formData.danceLevel || ""} onChange={handleInputChange}
+                    <label htmlFor="user-dance-level" className="text-sm font-medium">Dance Level</label>
+                    <select id="user-dance-level" name="danceLevel" value={formData.danceLevel || ""} onChange={handleInputChange}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                       <option value="">None</option>
                       {Object.values(DanceLevel).map(level => <option key={level} value={level}>{level}</option>)}
@@ -318,8 +319,8 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Birth Date</label>
-                  <Input name="birthDate" type="date" value={formData.birthDate || ""} onChange={handleInputChange} />
+                  <label htmlFor="user-birth-date" className="text-sm font-medium">Birth Date</label>
+                  <Input id="user-birth-date" name="birthDate" type="date" value={formData.birthDate || ""} onChange={handleInputChange} />
                 </div>
               </CardContent>
               <div className="flex justify-end gap-2 p-6 pt-0">

@@ -54,11 +54,30 @@ const LEVEL_STYLE: Record<string, string> = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const toMinutes = (t: string) => { const [h,m]=t.split(":").map(Number); return h*60+(m||0) }
 const toTimeStr = (m: number) => `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`
+const SCORE_PATTERN = /(-?\d+)hard\/(-?\d+)soft/
 
 function parseScore(score: string|null) {
   if (!score) return null
-  const m = score.match(/(-?\d+)hard\/(-?\d+)soft/)
+  const m = SCORE_PATTERN.exec(score)
   return m ? { hard: Number(m[1]), soft: Number(m[2]) } : null
+}
+
+function getLessonSubject(lesson: ScheduledLessonDTO): string {
+  switch (getLessonCategory(lesson)) {
+    case "group": return lesson.danceGroup?.name ?? "Group Lesson"
+    case "private-matched": return lesson.student?.fullName ?? "Private Lesson"
+    default: return "Open Slot"
+  }
+}
+
+function getScoreStatusClass(hardScore: number | undefined): string {
+  return hardScore !== undefined && hardScore < 0
+    ? "bg-red-500/15 text-red-400 border-red-500/30"
+    : "bg-green-500/15 text-green-400 border-green-500/30"
+}
+
+function getScoreStatusIcon(hardScore: number | undefined): string {
+  return hardScore !== undefined && hardScore < 0 ? "❌" : "✅"
 }
 
 const makeDropId = (id: number) => `drop-ts-${id}`
@@ -76,15 +95,13 @@ function cardBorder(color: string, avail: boolean, solid: boolean) {
 
 // ─── LessonBlockContent ───────────────────────────────────────────────────────
 function LessonBlockContent({ lesson, heightPx, isEditing=false, isDragging=false }:{
-  lesson: ScheduledLessonDTO; heightPx: number; isEditing?: boolean; isDragging?: boolean
+  readonly lesson: ScheduledLessonDTO; readonly heightPx: number; readonly isEditing?: boolean; readonly isDragging?: boolean
 }) {
   const cat      = getLessonCategory(lesson)
   const compact  = heightPx < 68
   const tc       = lesson.teacher.colorCode || "#9ca3af"
   const avail    = cat === "private-available"
-  const subject  = cat==="group" ? (lesson.danceGroup?.name ?? "Group Lesson")
-                 : cat==="private-matched" ? (lesson.student?.fullName ?? "Private Lesson")
-                 : "Open Slot"
+  const subject = getLessonSubject(lesson)
   const level    = lesson.danceGroup?.danceLevel ?? null
 
   return (
@@ -119,8 +136,8 @@ function LessonBlockContent({ lesson, heightPx, isEditing=false, isDragging=fals
 
 // ─── LessonBlock (view mode) ──────────────────────────────────────────────────
 function LessonBlock({ lesson, topPx, heightPx, widthPercent=100, leftPercent=0, solidBg=false }:{
-  lesson: ScheduledLessonDTO; topPx: number; heightPx: number
-  widthPercent?: number; leftPercent?: number; solidBg?: boolean
+  readonly lesson: ScheduledLessonDTO; readonly topPx: number; readonly heightPx: number
+  readonly widthPercent?: number; readonly leftPercent?: number; readonly solidBg?: boolean
 }) {
   const avail = getLessonCategory(lesson) === "private-available"
   const tc    = lesson.teacher.colorCode || "#9ca3af"
@@ -140,8 +157,8 @@ function LessonBlock({ lesson, topPx, heightPx, widthPercent=100, leftPercent=0,
 
 // ─── DraggableLessonBlock (edit mode) ─────────────────────────────────────────
 function DraggableLessonBlock({ lesson, topPx, heightPx, isMoving, widthPercent=100, leftPercent=0, solidBg=false }:{
-  lesson: ScheduledLessonDTO; topPx: number; heightPx: number; isMoving: boolean
-  widthPercent?: number; leftPercent?: number; solidBg?: boolean
+  readonly lesson: ScheduledLessonDTO; readonly topPx: number; readonly heightPx: number; readonly isMoving: boolean
+  readonly widthPercent?: number; readonly leftPercent?: number; readonly solidBg?: boolean
 }) {
   const avail    = getLessonCategory(lesson) === "private-available"
   const tc       = lesson.teacher.colorCode || "#9ca3af"
@@ -170,7 +187,7 @@ function DraggableLessonBlock({ lesson, topPx, heightPx, isMoving, widthPercent=
 }
 
 // ─── DroppableTimeslot ────────────────────────────────────────────────────────
-function DroppableTimeslot({ timeslot, isOccupied }:{ timeslot: TimeslotDTO; isOccupied: boolean }) {
+function DroppableTimeslot({ timeslot, isOccupied }:{ readonly timeslot: TimeslotDTO; readonly isOccupied: boolean }) {
   const start = toMinutes(timeslot.startTime), end = toMinutes(timeslot.endTime)
   const top   = (start - GRID_START_MIN) / ROW_MINUTES * ROW_HEIGHT_PX
   const h     = (end - start) / ROW_MINUTES * ROW_HEIGHT_PX
@@ -189,7 +206,7 @@ function DroppableTimeslot({ timeslot, isOccupied }:{ timeslot: TimeslotDTO; isO
 
 // ─── TimeslotDropLayer ────────────────────────────────────────────────────────
 function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds }:{
-  gridDays: DayOfWeek[]; allTimeslots: TimeslotDTO[]; occupiedTimeslotIds: Set<number>
+  readonly gridDays: DayOfWeek[]; readonly allTimeslots: TimeslotDTO[]; readonly occupiedTimeslotIds: Set<number>
 }) {
   return (
     <div className="absolute inset-0 grid pointer-events-none" style={{ gridTemplateColumns:`${TIME_COL_W}px repeat(${gridDays.length},1fr)`, zIndex:5 }}>
@@ -207,8 +224,8 @@ function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds }:{
 
 // ─── StackedLessonsGroup ──────────────────────────────────────────────────────
 function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLessonId }:{
-  lessons: ScheduledLessonDTO[]; topPx: number; heightPx: number
-  isEditing: boolean; movingLessonId: number|null
+  readonly lessons: ScheduledLessonDTO[]; readonly topPx: number; readonly heightPx: number
+  readonly isEditing: boolean; readonly movingLessonId: number|null
 }) {
   const [expanded, setExpanded] = useState(false)
   const count = lessons.length
@@ -230,7 +247,7 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
             ? <DraggableLessonBlock key={l.id} lesson={l} topPx={topPx} heightPx={heightPx} isMoving={movingLessonId===l.id} widthPercent={w} leftPercent={left} />
             : <LessonBlock key={l.id} lesson={l} topPx={topPx} heightPx={heightPx} widthPercent={w} leftPercent={left} />
         })}
-        <button onClick={e=>{e.stopPropagation();setExpanded(true)}}
+        <button type="button" onClick={e=>{e.stopPropagation();setExpanded(true)}}
           className="absolute right-0 z-30 flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500/80 text-white hover:bg-indigo-400 transition-colors shadow-lg"
           style={{top:topPx-2}} title={`${count} lessons — expand`}>
           <ChevronDown className="h-3 w-3" />
@@ -246,7 +263,7 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
   const itemH = Math.max(heightPx, 68)
   return (
     <>
-      <button onClick={e=>{e.stopPropagation();setExpanded(false)}}
+      <button type="button" onClick={e=>{e.stopPropagation();setExpanded(false)}}
         className="absolute right-0 z-40 flex items-center justify-center w-5 h-5 rounded-full bg-indigo-500/80 text-white hover:bg-indigo-400 transition-colors shadow-lg"
         style={{top:topPx-2}} title="Collapse">
         <ChevronUp className="h-3 w-3" />
@@ -265,7 +282,7 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
 }
 
 // ─── DragOverlayContent ───────────────────────────────────────────────────────
-function DragOverlayContent({ lesson }:{ lesson: ScheduledLessonDTO }) {
+function DragOverlayContent({ lesson }:{ readonly lesson: ScheduledLessonDTO }) {
   const avail = getLessonCategory(lesson) === "private-available"
   const tc    = lesson.teacher.colorCode || "#9ca3af"
   return (
@@ -488,7 +505,7 @@ export function TimetableViewPage() {
       <div className="flex items-center gap-4">
         <h1 className="text-3xl font-bold text-white">Timetable — Schedule #{id}</h1>
         {!isSolving && solution.lessons.length>0 && (
-          <Button variant={isEditing?"destructive":"outline"} size="sm" onClick={handleEditToggle} className="gap-1.5">
+          <Button type="button" variant={isEditing?"destructive":"outline"} size="sm" onClick={handleEditToggle} className="gap-1.5">
             {isEditing ? <><X className="h-4 w-4" /> Exit Edit</> : <><Pencil className="h-4 w-4" /> Edit</>}
           </Button>
         )}
@@ -514,8 +531,8 @@ export function TimetableViewPage() {
         )}
         {solution.score && (
           <div className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium border",
-            parsedScore&&parsedScore.hard<0 ? "bg-red-500/15 text-red-400 border-red-500/30" : "bg-green-500/15 text-green-400 border-green-500/30")}>
-            {parsedScore&&parsedScore.hard<0?"❌":"✅"}
+            getScoreStatusClass(parsedScore?.hard))}>
+            {getScoreStatusIcon(parsedScore?.hard)}
             <span>Score: {parsedScore ? `${parsedScore.hard} hard / ${parsedScore.soft} soft` : solution.score}</span>
             {parsedScore&&parsedScore.hard<0 && <span className="text-red-300">(Hard constraint violated!)</span>}
             {parsedScore&&parsedScore.hard===0&&parsedScore.soft<0 && <span className="text-yellow-400">({Math.abs(parsedScore.soft)} soft penalties)</span>}
@@ -593,7 +610,7 @@ export function TimetableViewPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {unassigned.map(l=>{
               const cat=getLessonCategory(l), tc=l.teacher.colorCode||"#9ca3af"
-              const sub=cat==="group"?(l.danceGroup?.name??"Group"):cat==="private-matched"?(l.student?.fullName??"Private"):"Open Slot"
+              const sub = getLessonSubject(l)
               return (
                 <div key={l.id} className={cn("rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs space-y-1.5",cat==="private-available"&&"border-dashed")}>
                   <p className={cn("font-semibold truncate",cat==="private-available"?"text-slate-400 italic":"text-white/80")}>{sub}</p>

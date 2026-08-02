@@ -60,7 +60,7 @@ export default function ProfilePage() {
       setWeeklyAvailabilities(user.weeklyAvailabilities ?? [])
       setOneTimeUnavailabilities(user.oneTimeUnavailabilities ?? [])
     }
-  }, [user?.id])
+  }, [user])
 
   // Load role-specific data
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function ProfilePage() {
     } else {
       setIsLoadingPreferences(false)
     }
-  }, [user?.id, user?.role])
+  }, [user])
 
   // Load desiredLessonsPerWeek from profile endpoint
   useEffect(() => {
@@ -120,7 +120,7 @@ export default function ProfilePage() {
         .catch((err) => setProfileError(err instanceof Error ? err.message : "Failed to load profile."))
         .finally(() => setProfileLoading(false))
     }
-  }, [user?.id, user?.role])
+  }, [user])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 

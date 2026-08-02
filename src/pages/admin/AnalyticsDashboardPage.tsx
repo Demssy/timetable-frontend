@@ -102,14 +102,14 @@ const CHART_PALETTE = [
 ]
 
 interface ColoredBarShapeProps {
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  index?: number
-  payload?: { colorCode?: string }
-  fallbackFill: string
-  palette?: string[]
+  readonly x?: number
+  readonly y?: number
+  readonly width?: number
+  readonly height?: number
+  readonly index?: number
+  readonly payload?: { readonly colorCode?: string }
+  readonly fallbackFill: string
+  readonly palette?: string[]
 }
 
 function ColoredBarShape({
@@ -142,16 +142,16 @@ function ColoredBarShape({
 function ChartTooltip({
   active, payload, label,
 }: {
-  active?: boolean
-  payload?: Array<{ value: number; name: string; color: string }>
-  label?: string
+  readonly active?: boolean
+  readonly payload?: Array<{ readonly value: number; readonly name: string; readonly color: string }>
+  readonly label?: string
 }) {
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-lg border border-slate-600 bg-slate-800/95 backdrop-blur px-3 py-2 shadow-xl">
       <p className="text-xs text-slate-400 mb-1">{label}</p>
-      {payload.map((entry, i) => (
-        <p key={i} className="text-sm font-semibold" style={{ color: entry.color }}>
+      {payload.map((entry) => (
+        <p key={`${entry.name}-${entry.value}`} className="text-sm font-semibold" style={{ color: entry.color }}>
           {entry.name}: {entry.value.toFixed(1)}
         </p>
       ))}
@@ -164,7 +164,7 @@ function ChartTooltip({
 function RoomUtilizationHeatmap({
   cells, rooms, days,
 }: {
-  cells: Map<string, RoomDayCell>; rooms: string[]; days: string[]
+  readonly cells: Map<string, RoomDayCell>; readonly rooms: string[]; readonly days: string[]
 }) {
   return (
     <Card className="border-slate-700 bg-slate-800/50">
@@ -238,7 +238,7 @@ function RoomUtilizationHeatmap({
 
 // ─── Teacher Weekly Hours Chart ──────────────────────────────────────────────
 
-function TeacherWeeklyChart({ data }: { data: TeacherWeeklyItem[] }) {
+function TeacherWeeklyChart({ data }: { readonly data: TeacherWeeklyItem[] }) {
   return (
     <Card className="border-slate-700 bg-slate-800/50">
       <CardHeader className="pb-2">
@@ -282,7 +282,7 @@ interface UtilizationTrendPoint {
   [roomName: string]: string | number
 }
 
-function RoomUtilizationTrendChart({ data, roomNames }: { data: UtilizationTrendPoint[]; roomNames: string[] }) {
+function RoomUtilizationTrendChart({ data, roomNames }: { readonly data: UtilizationTrendPoint[]; readonly roomNames: string[] }) {
   return (
     <Card className="border-slate-700 bg-slate-800/50">
       <CardHeader className="pb-2">
@@ -332,7 +332,7 @@ interface TeacherTotalItem {
   colorCode: string
 }
 
-function TeacherTotalChart({ data }: { data: TeacherTotalItem[] }) {
+function TeacherTotalChart({ data }: { readonly data: TeacherTotalItem[] }) {
   return (
     <Card className="border-slate-700 bg-slate-800/50">
       <CardHeader className="pb-2">
@@ -376,7 +376,7 @@ function computeRoomHeatmap(lessons: ScheduledLessonDTO[], rooms: RoomDTO[]): {
   cells: Map<string, RoomDayCell>; roomNames: string[]; days: string[]
 } {
   const days = DAY_ORDER
-  const roomNames = rooms.map(r => r.name).sort()
+  const roomNames = rooms.map(r => r.name).sort((a, b) => a.localeCompare(b))
   const cells = new Map<string, RoomDayCell>()
   for (const room of roomNames) {
     for (const day of days) {
@@ -453,7 +453,7 @@ function buildUtilizationTrend(
   allSolutions: Map<number, ScheduleSolutionResponse>,
   rooms: RoomDTO[],
 ): { data: UtilizationTrendPoint[]; roomNames: string[] } {
-  const roomNames = rooms.map(r => r.name).sort()
+  const roomNames = rooms.map(r => r.name).sort((a, b) => a.localeCompare(b))
   const data: UtilizationTrendPoint[] = []
   for (const s of summaries) {
     const sol = allSolutions.get(s.id)
@@ -490,7 +490,7 @@ function buildTeacherTotals(summaries: ScheduleSummary[]): TeacherTotalItem[] {
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 
 function StatCard({ icon: Icon, iconColor, label, value, sub }: {
-  icon: React.ElementType; iconColor: string; label: string; value: string | number; sub?: string
+  readonly icon: React.ElementType; readonly iconColor: string; readonly label: string; readonly value: string | number; readonly sub?: string
 }) {
   return (
     <div className="rounded-xl border border-slate-700 bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4">
@@ -621,7 +621,7 @@ export function AnalyticsDashboardPage() {
           </h1>
           <p className="text-slate-400">Schedule insights, teacher workload &amp; room utilization</p>
         </div>
-        <Button variant="outline" size="icon"
+        <Button type="button" variant="outline" size="icon"
           onClick={() => { if (activeTab === "schedule" && selectedId) loadAnalytics(selectedId); else loadOverall() }}
           disabled={isLoadingData || isLoadingOverall} title="Refresh">
           <RefreshCw className={cn("h-4 w-4", (isLoadingData || isLoadingOverall) && "animate-spin")} />
@@ -634,7 +634,7 @@ export function AnalyticsDashboardPage() {
           { key: "schedule" as const, label: "Per Schedule", icon: CalendarDays },
           { key: "overall" as const, label: "Overall Statistics", icon: BarChart3 },
         ]).map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)}
+          <button type="button" key={key} onClick={() => setActiveTab(key)}
             className={cn("flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200",
               activeTab === key ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-slate-400 hover:text-white hover:bg-slate-700/50")}>
             <Icon className="h-4 w-4" />{label}
