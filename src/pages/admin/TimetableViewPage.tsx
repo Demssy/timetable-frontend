@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Link, useParams } from "react-router-dom"
 import {
-  ChevronRight, AlertTriangle, Loader2, Pin, Pencil, X,
+  ChevronRight, AlertTriangle, Loader2, Pin, Pencil, X, Plus, Save, Trash2,
   GripVertical, ChevronDown, ChevronUp,
 } from "lucide-react"
 import {
@@ -12,9 +12,11 @@ import {
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { solverApi } from "@/api/solverApi"
+import { scheduleApi } from "@/api/scheduleApi"
 import { timeslotApi } from "@/api/timeslotApi"
 import { lessonApi } from "@/api/lessonApi"
-import type { ScheduleSolutionResponse, ScheduledLessonDTO, TimeslotDTO } from "@/types/schedule"
+import type { ScheduleMetadataDTO, ScheduleSolutionResponse, ScheduledLessonDTO, TimeslotDTO } from "@/types/schedule"
+import { ScheduleStatus } from "@/types/schedule"
 import type { ScoreExplanationResponse, UnmetStudentDTO } from "@/types/solver"
 import { getLessonCategory } from "@/types/schedule"
 import { DayOfWeek, SolverStatus } from "@/types/enums"
@@ -24,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { useSolverPolling } from "@/hooks/useSolverPolling"
 import { ScoreExplanationPanel } from "@/components/ScoreExplanationPanel"
 import { UnmetStudentsPanel } from "@/components/UnmetStudentsPanel"
+import { AddManualLessonModal, type ManualLessonData } from "@/components/AddManualLessonModal"
 
 // ─── Grid configuration ─────────────────────────────────────────────────────
 const GRID_START_MIN = 7 * 60 + 30
@@ -156,13 +159,14 @@ function LessonBlock({ lesson, topPx, heightPx, widthPercent=100, leftPercent=0,
 }
 
 // ─── DraggableLessonBlock (edit mode) ─────────────────────────────────────────
-function DraggableLessonBlock({ lesson, topPx, heightPx, isMoving, widthPercent=100, leftPercent=0, solidBg=false }:{
+function DraggableLessonBlock({ lesson, topPx, heightPx, isMoving, widthPercent=100, leftPercent=0, solidBg=false, isDeleteMode=false, isDeleting=false, onDelete }:{
   readonly lesson: ScheduledLessonDTO; readonly topPx: number; readonly heightPx: number; readonly isMoving: boolean
   readonly widthPercent?: number; readonly leftPercent?: number; readonly solidBg?: boolean
+  readonly isDeleteMode?: boolean; readonly isDeleting?: boolean; readonly onDelete?: (lesson: ScheduledLessonDTO) => void
 }) {
   const avail    = getLessonCategory(lesson) === "private-available"
   const tc       = lesson.teacher.colorCode || "#9ca3af"
-  const disabled = isMoving || lesson.isPinned
+  const disabled = isMoving || lesson.isPinned || isDeleteMode
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `lesson-${lesson.id}`, data: { lesson }, disabled,
   })
@@ -181,32 +185,53 @@ function DraggableLessonBlock({ lesson, topPx, heightPx, isMoving, widthPercent=
       }}
     >
       {isMoving && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 rounded-lg"><Loader2 className="h-4 w-4 animate-spin text-white" /></div>}
+      {isDeleteMode && (
+        <button
+          type="button"
+          aria-label={`Delete lesson ${lesson.id}`}
+          onMouseDown={event => event.stopPropagation()}
+          onClick={event => { event.stopPropagation(); onDelete?.(lesson) }}
+          disabled={isDeleting}
+          className="absolute right-1.5 top-1.5 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-400/50 bg-red-500/90 text-white shadow transition-colors hover:bg-red-400 disabled:opacity-60"
+        >
+          {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </button>
+      )}
       <LessonBlockContent lesson={lesson} heightPx={heightPx} isEditing isDragging={isDragging} />
     </div>
   )
 }
 
 // ─── DroppableTimeslot ────────────────────────────────────────────────────────
-function DroppableTimeslot({ timeslot, isOccupied }:{ readonly timeslot: TimeslotDTO; readonly isOccupied: boolean }) {
+function DroppableTimeslot({ timeslot, isOccupied, onAddLesson }:{
+  readonly timeslot: TimeslotDTO; readonly isOccupied: boolean
+  readonly onAddLesson: (timeslotId: number, dayOfWeek: DayOfWeek) => void
+}) {
   const start = toMinutes(timeslot.startTime), end = toMinutes(timeslot.endTime)
   const top   = (start - GRID_START_MIN) / ROW_MINUTES * ROW_HEIGHT_PX
   const h     = (end - start) / ROW_MINUTES * ROW_HEIGHT_PX
   const { isOver, setNodeRef } = useDroppable({ id: makeDropId(timeslot.id), data: { timeslot } })
   return (
     <div ref={setNodeRef}
-      className={cn("absolute left-0.5 right-0.5 rounded border-2 border-dashed transition-all duration-150",
+      className={cn("group absolute left-0.5 right-0.5 rounded border-2 border-dashed transition-all duration-150",
         isOver ? "border-indigo-400/70 bg-indigo-400/15" : isOccupied ? "border-slate-600/20 bg-slate-500/5" : "border-emerald-400/40 bg-emerald-400/8 animate-pulse")}
       style={{ top: top+1, height: Math.max(h-2,2) }}
     >
       {!isOccupied && !isOver && <span className="absolute top-0.5 right-1 text-[8px] text-emerald-400/60 font-medium select-none">{toTimeStr(start)}</span>}
       {isOver && <span className="absolute top-0.5 right-1 text-[8px] text-indigo-300 font-semibold select-none">Drop here</span>}
+      <button type="button" aria-label={`Add lesson on ${timeslot.dayOfWeek} at ${toTimeStr(start)}`}
+        onClick={event => { event.stopPropagation(); onAddLesson(timeslot.id, timeslot.dayOfWeek) }}
+        className="absolute left-1/2 top-1/2 z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-indigo-300/50 bg-indigo-500/90 text-white opacity-0 shadow-lg transition-opacity hover:bg-indigo-400 focus:opacity-100 group-hover:opacity-100">
+        <Plus className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
 
 // ─── TimeslotDropLayer ────────────────────────────────────────────────────────
-function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds }:{
+function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds, onAddLesson }:{
   readonly gridDays: DayOfWeek[]; readonly allTimeslots: TimeslotDTO[]; readonly occupiedTimeslotIds: Set<number>
+  readonly onAddLesson: (timeslotId: number, dayOfWeek: DayOfWeek) => void
 }) {
   return (
     <div className="absolute inset-0 grid pointer-events-none" style={{ gridTemplateColumns:`${TIME_COL_W}px repeat(${gridDays.length},1fr)`, zIndex:5 }}>
@@ -214,7 +239,7 @@ function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds }:{
       {gridDays.map(day => (
         <div key={day} className="relative pointer-events-auto">
           {allTimeslots.filter(ts=>ts.dayOfWeek===day).map(ts=>(
-            <DroppableTimeslot key={ts.id} timeslot={ts} isOccupied={occupiedTimeslotIds.has(ts.id)} />
+            <DroppableTimeslot key={ts.id} timeslot={ts} isOccupied={occupiedTimeslotIds.has(ts.id)} onAddLesson={onAddLesson} />
           ))}
         </div>
       ))}
@@ -223,9 +248,10 @@ function TimeslotDropLayer({ gridDays, allTimeslots, occupiedTimeslotIds }:{
 }
 
 // ─── StackedLessonsGroup ──────────────────────────────────────────────────────
-function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLessonId }:{
+function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLessonId, isDeleteMode=false, deletingLessonIds, onDeleteLesson }:{
   readonly lessons: ScheduledLessonDTO[]; readonly topPx: number; readonly heightPx: number
   readonly isEditing: boolean; readonly movingLessonId: number|null
+  readonly isDeleteMode?: boolean; readonly deletingLessonIds: Set<number>; readonly onDeleteLesson: (lesson: ScheduledLessonDTO) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const count = lessons.length
@@ -233,7 +259,15 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
   if (count <= 1) {
     const l = lessons[0]
     return isEditing
-      ? <DraggableLessonBlock lesson={l} topPx={topPx} heightPx={heightPx} isMoving={movingLessonId===l.id} />
+      ? <DraggableLessonBlock
+          lesson={l}
+          topPx={topPx}
+          heightPx={heightPx}
+          isMoving={movingLessonId===l.id}
+          isDeleteMode={isDeleteMode}
+          isDeleting={deletingLessonIds.has(l.id)}
+          onDelete={onDeleteLesson}
+        />
       : <LessonBlock lesson={l} topPx={topPx} heightPx={heightPx} />
   }
 
@@ -244,7 +278,18 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
         {lessons.map((l,idx) => {
           const w=100/count, left=idx*w
           return isEditing
-            ? <DraggableLessonBlock key={l.id} lesson={l} topPx={topPx} heightPx={heightPx} isMoving={movingLessonId===l.id} widthPercent={w} leftPercent={left} />
+            ? <DraggableLessonBlock
+                key={l.id}
+                lesson={l}
+                topPx={topPx}
+                heightPx={heightPx}
+                isMoving={movingLessonId===l.id}
+                widthPercent={w}
+                leftPercent={left}
+                isDeleteMode={isDeleteMode}
+                isDeleting={deletingLessonIds.has(l.id)}
+                onDelete={onDeleteLesson}
+              />
             : <LessonBlock key={l.id} lesson={l} topPx={topPx} heightPx={heightPx} widthPercent={w} leftPercent={left} />
         })}
         <button type="button" onClick={e=>{e.stopPropagation();setExpanded(true)}}
@@ -274,7 +319,17 @@ function StackedLessonsGroup({ lessons, topPx, heightPx, isEditing, movingLesson
       {lessons.map((l,idx) => {
         const itemTop = topPx + idx*itemH
         return isEditing
-          ? <DraggableLessonBlock key={l.id} lesson={l} topPx={itemTop} heightPx={itemH} isMoving={movingLessonId===l.id} solidBg />
+          ? <DraggableLessonBlock
+              key={l.id}
+              lesson={l}
+              topPx={itemTop}
+              heightPx={itemH}
+              isMoving={movingLessonId===l.id}
+              solidBg
+              isDeleteMode={isDeleteMode}
+              isDeleting={deletingLessonIds.has(l.id)}
+              onDelete={onDeleteLesson}
+            />
           : <LessonBlock key={l.id} lesson={l} topPx={itemTop} heightPx={itemH} solidBg />
       })}
     </>
@@ -299,6 +354,7 @@ export function TimetableViewPage() {
   const scheduleId = id ? Number(id) : null
 
   const [solution, setSolution]   = useState<ScheduleSolutionResponse|null>(null)
+  const [schedule, setSchedule]   = useState<ScheduleMetadataDTO|null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError]         = useState<string|null>(null)
   const { status, startPolling, stopPolling } = useSolverPolling(scheduleId)
@@ -308,6 +364,12 @@ export function TimetableViewPage() {
   const [allTimeslots, setAllTimeslots]     = useState<TimeslotDTO[]>([])
   const [movingLessonId, setMovingLessonId] = useState<number|null>(null)
   const [activeLesson, setActiveLesson]     = useState<ScheduledLessonDTO|null>(null)
+  const [manualTimeslotId, setManualTimeslotId] = useState<number|null>(null)
+  const [isCreatingLesson, setIsCreatingLesson] = useState(false)
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false)
+  const [isDeleteMode, setIsDeleteMode] = useState(false)
+  const [deletingLessonIds, setDeletingLessonIds] = useState<Set<number>>(new Set())
+  const [actionError, setActionError] = useState<string|null>(null)
   const gridBodyRef = useRef<HTMLDivElement>(null)
 
   const [scoreExplanation, setScoreExplanation] = useState<ScoreExplanationResponse|null>(null)
@@ -325,6 +387,12 @@ export function TimetableViewPage() {
     catch(e) { setError(e instanceof Error ? e.message : "Failed to load solution") }
     finally { setIsLoading(false) }
   },[scheduleId])
+
+  const fetchSchedule = useCallback(async () => {
+    if (!scheduleId) return
+    try { setSchedule(await scheduleApi.getById(scheduleId)) }
+    catch(e) { setError(e instanceof Error ? e.message : "Failed to load schedule") }
+  }, [scheduleId])
 
   const fetchReports = useCallback(async () => {
     if (!scheduleId) return
@@ -346,7 +414,7 @@ export function TimetableViewPage() {
   },[status, fetchReports])
 
   useEffect(() => {
-    fetchSolution(); startPolling()
+    fetchSolution(); fetchSchedule(); startPolling()
     return () => { stopPolling() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[])
@@ -362,6 +430,7 @@ export function TimetableViewPage() {
       try { setAllTimeslots(await timeslotApi.getAll()) }
       catch(e) { console.error("Failed to load timeslots:",e); return }
     }
+    if (isEditing) setIsDeleteMode(false)
     setIsEditing(p=>!p)
   },[isEditing])
 
@@ -394,6 +463,89 @@ export function TimetableViewPage() {
 
   const handleDragCancel = useCallback(()=>setActiveLesson(null),[])
 
+  const handleAddLesson = useCallback((timeslotId: number) => {
+    setActionError(null)
+    setManualTimeslotId(timeslotId)
+  }, [])
+
+  const handleCreateManualLesson = useCallback(async ({ teacherId, studentId, timeslotId, isPinned }: ManualLessonData) => {
+    const timeslot = allTimeslots.find(item => item.id === timeslotId)
+    if (!timeslot) return
+
+    setIsCreatingLesson(true)
+    setActionError(null)
+    try {
+      const created = await lessonApi.create({
+        scheduleId,
+        teacherId, studentId, danceGroupId: null,
+        durationMinutes: toMinutes(timeslot.endTime) - toMinutes(timeslot.startTime),
+        isPrivate: true, isPinned, isActive: true, timeslotId, roomId: null,
+      })
+      const lesson = { ...created, isPrivate: true, isPinned, timeslot: created.timeslot ?? timeslot }
+      setSolution(previous => previous && {
+        ...previous,
+        fullyAssigned: previous.fullyAssigned && lesson.room !== null,
+        lessons: [...previous.lessons, lesson],
+      })
+      setManualTimeslotId(null)
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Failed to add manual lesson.")
+    } finally {
+      setIsCreatingLesson(false)
+    }
+  }, [allTimeslots, scheduleId])
+
+  const handleSaveSchedule = useCallback(async () => {
+    if (!scheduleId || !schedule) return
+    setIsSavingSchedule(true)
+    setActionError(null)
+    try {
+      const updated = schedule.status === ScheduleStatus.PUBLISHED
+        ? await scheduleApi.saveAndRepublish(scheduleId)
+        : await scheduleApi.save(scheduleId)
+      setSchedule(updated)
+      await fetchSolution()
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Failed to save schedule.")
+    } finally {
+      setIsSavingSchedule(false)
+    }
+  }, [fetchSolution, schedule, scheduleId])
+
+  const handleToggleDeleteMode = useCallback(() => {
+    setActionError(null)
+    setIsDeleteMode(previous => !previous)
+  }, [])
+
+  const handleDeleteLesson = useCallback(async (lesson: ScheduledLessonDTO) => {
+    if (deletingLessonIds.has(lesson.id)) return
+    const confirmed = window.confirm(`Delete lesson "${getLessonSubject(lesson)}"?`)
+    if (!confirmed) return
+
+    setActionError(null)
+    setDeletingLessonIds(previous => new Set(previous).add(lesson.id))
+    try {
+      await lessonApi.delete(lesson.id)
+      setSolution(previous => {
+        if (!previous) return previous
+        const remaining = previous.lessons.filter(item => item.id !== lesson.id)
+        return {
+          ...previous,
+          fullyAssigned: remaining.every(item => item.timeslot !== null && item.room !== null),
+          lessons: remaining,
+        }
+      })
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Failed to delete lesson.")
+    } finally {
+      setDeletingLessonIds(previous => {
+        const next = new Set(previous)
+        next.delete(lesson.id)
+        return next
+      })
+    }
+  }, [deletingLessonIds])
+
   if (isLoading) return (
     <div className="container mx-auto py-10 flex items-center justify-center gap-3 text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin" /> Loading timetable…
@@ -405,8 +557,8 @@ export function TimetableViewPage() {
     </div>
   )
 
-  const assigned   = solution.lessons.filter(l=>l.timeslot!==null && l.room!==null)
-  const unassigned = solution.lessons.filter(l=>l.timeslot===null  || l.room===null)
+  const assigned   = solution.lessons.filter(l=>l.timeslot!==null)
+  const unassigned = solution.lessons.filter(l=>l.timeslot===null)
   const occupiedTimeslotIds = new Set(assigned.map(l=>l.timeslot!.id))
 
   const stats = {
@@ -465,7 +617,7 @@ export function TimetableViewPage() {
           ))}
         </div>
 
-        {isEditing && <TimeslotDropLayer gridDays={gridDays} allTimeslots={allTimeslots} occupiedTimeslotIds={occupiedTimeslotIds} />}
+        {isEditing && <TimeslotDropLayer gridDays={gridDays} allTimeslots={allTimeslots} occupiedTimeslotIds={occupiedTimeslotIds} onAddLesson={handleAddLesson} />}
 
         <div className="absolute inset-0 grid pointer-events-none"
           style={{ gridTemplateColumns:`${TIME_COL_W}px repeat(${gridDays.length},1fr)` }}>
@@ -480,7 +632,10 @@ export function TimetableViewPage() {
                 return (
                   <StackedLessonsGroup key={`stack-${first.timeslot!.id}`}
                     lessons={group} topPx={topPx} heightPx={hPx}
-                    isEditing={isEditing} movingLessonId={movingLessonId} />
+                    isEditing={isEditing} movingLessonId={movingLessonId}
+                    isDeleteMode={isDeleteMode}
+                    deletingLessonIds={deletingLessonIds}
+                    onDeleteLesson={handleDeleteLesson} />
                 )
               })}
             </div>
@@ -502,25 +657,9 @@ export function TimetableViewPage() {
         <span className="text-white font-medium">Timetable</span>
       </nav>
 
-      <div className="flex items-center gap-4">
-        <h1 className="text-3xl font-bold text-white">Timetable — Schedule #{id}</h1>
-        {!isSolving && solution.lessons.length>0 && (
-          <Button type="button" variant={isEditing?"destructive":"outline"} size="sm" onClick={handleEditToggle} className="gap-1.5">
-            {isEditing ? <><X className="h-4 w-4" /> Exit Edit</> : <><Pencil className="h-4 w-4" /> Edit</>}
-          </Button>
-        )}
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-3xl font-bold text-white">{schedule?.name}</h1>
       </div>
-
-      {isEditing && (
-        <div className="flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm font-medium text-indigo-300">
-          <GripVertical className="h-4 w-4" />
-          <span>
-            <strong>Edit Mode:</strong> Drag lessons to highlighted timeslots.
-            Pinned <Pin className="inline h-3 w-3 text-amber-400" /> cannot be moved.
-            Stacked lessons expand with <ChevronDown className="inline h-3 w-3" />.
-          </span>
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-3 items-center">
         {isSolving && (
@@ -568,6 +707,47 @@ export function TimetableViewPage() {
           <UnmetStudentsPanel unmetStudents={unmetStudents} isLoading={isLoadingReports} error={unmetError} />
         </div>
       )}
+
+      {isEditing && (
+        <div className="flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm font-medium text-indigo-300">
+          <GripVertical className="h-4 w-4" />
+          <span>
+            <strong>Edit Mode:</strong> Drag lessons to highlighted timeslots.
+            Use <Plus className="inline h-3 w-3" /> to add a private lesson to any slot.
+            Use delete mode to remove any lesson directly from the grid.
+            Pinned <Pin className="inline h-3 w-3 text-amber-400" /> cannot be moved.
+            Stacked lessons expand with <ChevronDown className="inline h-3 w-3" />.
+          </span>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {!isSolving && solution.lessons.length>0 && (
+          <Button type="button" variant={isEditing?"destructive":"outline"} size="sm" onClick={handleEditToggle} className="gap-1.5">
+            {isEditing ? <><X className="h-4 w-4" /> Exit Edit</> : <><Pencil className="h-4 w-4" /> Edit</>}
+          </Button>
+        )}
+        {isEditing && (
+          <Button
+            type="button"
+            variant={isDeleteMode ? "destructive" : "outline"}
+            size="sm"
+            onClick={handleToggleDeleteMode}
+            className="gap-1.5"
+          >
+            <Trash2 className="h-4 w-4" />
+            {isDeleteMode ? "Disable Delete" : "Delete Lesson"}
+          </Button>
+        )}
+        {isEditing && schedule && (
+          <Button type="button" size="sm" onClick={handleSaveSchedule} disabled={isSavingSchedule} className="gap-1.5">
+            {isSavingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {isSavingSchedule ? "Saving…" : schedule.status === ScheduleStatus.PUBLISHED ? "Save and Republish" : "Save"}
+          </Button>
+        )}
+      </div>
+
+      {actionError && <div className="rounded-md border border-destructive/30 bg-destructive/15 p-3 text-sm text-destructive">{actionError}</div>}
 
       {/* Calendar grid */}
       {solution.lessons.length>0 ? (
@@ -626,6 +806,14 @@ export function TimetableViewPage() {
           </div>
         </div>
       )}
+
+      {manualTimeslotId !== null && <AddManualLessonModal
+        isOpen
+        timeslotId={manualTimeslotId}
+        isSubmitting={isCreatingLesson}
+        onClose={() => { if (!isCreatingLesson) setManualTimeslotId(null) }}
+        onConfirm={handleCreateManualLesson}
+      />}
     </div>
   )
 }

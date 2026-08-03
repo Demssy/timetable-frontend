@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState, useRef, useCallback} from "react"
+import { useNavigate } from "react-router-dom"
 import { addWeeks, endOfWeek, format, isWithinInterval, parseISO, startOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { EventCard } from "./event-card.tsx"
@@ -10,7 +11,7 @@ import { cancelScheduledLesson, restoreScheduledLesson } from "@/api/lessonApi"
 import type { ScheduleMetadataDTO, ScheduledLessonDTO } from "@/types/schedule"
 import { getLessonCategory } from "@/types/schedule"
 import type { LessonCategory } from "@/types/schedule"
-import { MapPin, Clock, CalendarDays, X, LayoutGrid, Calendar, Ban, RotateCcw } from "lucide-react"
+import { MapPin, Clock, CalendarDays, X, LayoutGrid, Calendar, Ban, RotateCcw, Pencil } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { UserRole } from "@/types/enums"
 
@@ -112,6 +113,7 @@ function findScheduleForWeek(weekStart: Date, schedules: ScheduleMetadataDTO[]) 
 
 export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const isTeacher = user?.role === UserRole.TEACHER
   const isStudent = user?.role === UserRole.STUDENT
   const isAdmin = user?.role === UserRole.ADMIN
@@ -339,6 +341,19 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                     : "No schedule is available"}
               </p>
             </div>
+
+            {isAdmin && activeSchedule && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 shrink-0"
+                onClick={() => navigate(`/admin/schedules/${activeSchedule.id}/timetable`)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
 
             <div className="hidden md:block h-8 w-px bg-border"></div>
 

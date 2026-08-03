@@ -82,6 +82,8 @@ export function getLessonCategory(lesson: ScheduledLessonDTO): LessonCategory {
 // ─── Request DTOs ─────────────────────────────────────────────────────────────
 
 export interface CreateLessonRequest {
+  /** Required for one-time lessons created directly in a specific schedule. */
+  scheduleId?: number | null
   teacherId: number
   /** Required for group lessons; null for private lessons. */
   danceGroupId?: number | null

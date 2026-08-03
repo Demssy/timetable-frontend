@@ -115,11 +115,18 @@ export function SchedulesPage() {
   const autoName = (week: Date) => `Week of ${format(week, "dd MMM yyyy")}`
   const [changingStatusId, setChangingStatusId] = useState<number | null>(null)
 
+  /** Sort schedules from newest to oldest (by start date, then by id as a tiebreaker). */
+  const sortSchedules = (list: ScheduleMetadataDTO[]) =>
+    [...list].sort((a, b) => {
+      const dateDiff = b.validFrom.localeCompare(a.validFrom)
+      return dateDiff !== 0 ? dateDiff : b.id - a.id
+    })
+
   const fetchSchedules = async () => {
     setIsLoading(true); setError(null); setConflictSchedule(null)
     try {
       // Use admin endpoint to get ALL schedules (including DRAFT and ARCHIVED)
-      setSchedules(await scheduleApi.adminGetAll())
+      setSchedules(sortSchedules(await scheduleApi.adminGetAll()))
     }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to load schedules") }
     finally { setIsLoading(false) }
@@ -165,7 +172,7 @@ export function SchedulesPage() {
     setChangingStatusId(s.id)
     try {
       const updated = await scheduleApi.archive(s.id)
-      setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
+      setSchedules(prev => sortSchedules(prev.map(item => (item.id === updated.id ? updated : item))))
       setError(null)
       setConflictSchedule(null)
     } catch (err) {
@@ -197,7 +204,7 @@ export function SchedulesPage() {
       } else {
         updated = await scheduleApi.revertToDraft(s.id)
       }
-      setSchedules(prev => prev.map(item => (item.id === updated.id ? updated : item)))
+      setSchedules(prev => sortSchedules(prev.map(item => (item.id === updated.id ? updated : item))))
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : "Failed to change status"
 
