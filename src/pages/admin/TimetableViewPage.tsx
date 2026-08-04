@@ -27,7 +27,7 @@ import { useSolverPolling } from "@/hooks/useSolverPolling"
 import { ScoreExplanationPanel } from "@/components/ScoreExplanationPanel"
 import { UnmetStudentsPanel } from "@/components/UnmetStudentsPanel"
 import { AddManualLessonModal, type ManualLessonData } from "@/components/AddManualLessonModal"
-
+import { deleteScheduledLesson } from "@/api/lessonApi"
 // ─── Grid configuration ─────────────────────────────────────────────────────
 const GRID_START_MIN = 7 * 60 + 30
 const GRID_END_MIN   = 22 * 60
@@ -525,7 +525,9 @@ export function TimetableViewPage() {
     setActionError(null)
     setDeletingLessonIds(previous => new Set(previous).add(lesson.id))
     try {
-      await lessonApi.delete(lesson.id)
+
+      await deleteScheduledLesson(lesson.id)
+
       setSolution(previous => {
         if (!previous) return previous
         const remaining = previous.lessons.filter(item => item.id !== lesson.id)

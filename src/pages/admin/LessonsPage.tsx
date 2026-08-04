@@ -276,7 +276,7 @@ export function LessonsPage() {
     setIsSaving(true); setFormError(null)
     try {
       if (modalMode === "create") await lessonApi.create(payload)
-      else if (editingLesson) await lessonApi.update(editingLesson.id, payload)
+      else if (editingLesson) await lessonApi.updateTemplate(editingLesson.id, payload)
       await fetchAll(); closeModal()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to save")

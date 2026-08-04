@@ -129,6 +129,9 @@ export const lessonApi = {
   update: async (id: number, data: CreateLessonRequest) =>
     normalizeLesson(await apiFetch<RawLesson>(`${BASE}/${id}`, { method: "PUT", body: JSON.stringify(data) })),
 
+    updateTemplate: async (id: number, data: CreateLessonRequest) =>
+        normalizeLesson(await apiFetch<RawLesson>(`/api/lessons/${id}`, { method: "PUT", body: JSON.stringify(data) })),
+
   toggleActive: async (id: number) =>
     normalizeLesson(await apiFetch<RawLesson>(`/api/lessons/${id}/toggle-active`, { method: "PUT" })),
 
@@ -172,3 +175,13 @@ export async function restoreScheduledLesson(id: number): Promise<ScheduledLesso
   )
 }
 
+/**
+ * Hard delete a scheduled lesson from the grid.
+ * This removes the slot from the schedule but keeps the original Lesson template intact.
+ * ADMIN only.
+ *
+ * @param id - ScheduledLesson ID
+ */
+export async function deleteScheduledLesson(id: number): Promise<void> {
+    return apiFetch<void>(`/api/admin/scheduled-lessons/${id}`, { method: "DELETE" })
+}
