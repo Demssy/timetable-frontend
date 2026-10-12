@@ -49,6 +49,11 @@ export function SignupForm() {
   const [isLoadingStyles, setIsLoadingStyles] = useState(false)
   const [stylesError, setStylesError] = useState("")
 
+  // ── teacher who is also a student ─────────────────────────────────────────
+  const [alsoStudent, setAlsoStudent] = useState(false)
+  const [studentLevel, setStudentLevel] = useState<string>("")
+  const [studentPreferredStyleIds, setStudentPreferredStyleIds] = useState<number[]>([])
+
   const navigate = useNavigate()
   const { register } = useAuth()
 
@@ -62,10 +67,24 @@ export function SignupForm() {
     return age < 18
   }, [birthDate])
 
-  const toggleStyle = (styleId: number) => {
-    setSpecialization((prev) =>
-      prev.includes(styleId) ? prev.filter((id) => id !== styleId) : [...prev, styleId]
-    )
+
+  const toggleId = (list: number[], id: number) =>
+    list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+
+  const toggleStyle = (styleId: number) => setSpecialization((prev) => toggleId(prev, styleId))
+
+  const toggleStudentStyle = (styleId: number) =>
+    setStudentPreferredStyleIds((prev) => toggleId(prev, styleId))
+
+  /** Switch role and reset the "also student" state when leaving TEACHER */
+  const handleModeChange = (m: Mode) => {
+    setMode(m)
+    setError("")
+    if (m !== "TEACHER") {
+      setAlsoStudent(false)
+      setStudentLevel("")
+      setStudentPreferredStyleIds([])
+    }
   }
 
   useEffect(() => {
@@ -135,6 +154,15 @@ export function SignupForm() {
           phone: phone || null,
           qualifiedStyleIds: specialization,
           bio: bio || null,
+          alsoStudent,
+          // student profile fields are sent only when the checkbox is checked
+          ...(alsoStudent && {
+            studentLevel: (studentLevel as DanceLevel) || undefined,
+            studentPreferredStyleIds:
+              studentPreferredStyleIds.length > 0 ? studentPreferredStyleIds : undefined,
+            parentContact: isMinor ? parentContact || null : null,
+            desiredLessonsPerWeek: desiredLessons ? Number(desiredLessons) : null,
+          }),
         }),
       })
       navigate("/", { replace: true })
@@ -170,7 +198,7 @@ export function SignupForm() {
               <button
                 key={m}
                 type="button"
-                onClick={() => { setMode(m); setError("") }}
+                onClick={() => handleModeChange(m)}
                 className={cn(
                   "py-2 rounded-lg text-sm font-semibold transition-all duration-200",
                   mode === m
@@ -336,6 +364,95 @@ export function SignupForm() {
                       inputClass
                     )}
                   />
+                </div>
+
+                {/* ── Also a student (dual role) ─────────────────────────── */}
+                <div className="space-y-3 rounded-lg border border-slate-700 p-3">
+                  <label htmlFor="alsoStudent" className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      id="alsoStudent"
+                      type="checkbox"
+                      checked={alsoStudent}
+                      onChange={e => setAlsoStudent(e.target.checked)}
+                      className="mt-1 h-4 w-4 accent-blue-600"
+                    />
+                    <span className="text-sm text-slate-300">
+                      I also want to attend classes as a student
+                    </span>
+                  </label>
+
+                  {alsoStudent && (
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-2">
+                        <Label htmlFor="studentLevel" className="text-slate-300">
+                          Dance Level <span className="text-slate-500 text-xs">(optional)</span>
+                        </Label>
+                        <select
+                          id="studentLevel"
+                          value={studentLevel}
+                          onChange={e => setStudentLevel(e.target.value)}
+                          className={cn(
+                            "w-full h-9 rounded-md border px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500",
+                            inputClass
+                          )}
+                        >
+                          <option value="">— Select level —</option>
+                          {Object.keys(DanceLevel).map(key => (
+                            <option key={key} value={key}>{DANCE_LEVEL_LABELS[key]}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">
+                          Preferred dance styles <span className="text-slate-500 text-xs">(optional)</span>
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {availableStyles.map((style) => (
+                            <button
+                              key={style.id}
+                              type="button"
+                              onClick={() => toggleStudentStyle(style.id)}
+                              className={cn(
+                                "px-3 py-1 rounded-full text-xs font-medium border transition-all duration-150",
+                                studentPreferredStyleIds.includes(style.id)
+                                  ? "bg-green-600 border-green-500 text-white"
+                                  : "bg-slate-800 border-slate-600 text-slate-400 hover:border-green-500 hover:text-slate-200"
+                              )}
+                            >
+                              {style.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="studentDesiredLessons" className="text-slate-300">
+                          Desired lessons / week <span className="text-slate-500 text-xs">(optional)</span>
+                        </Label>
+                        <Input id="studentDesiredLessons" type="number" min="1" max="14"
+                          placeholder="e.g. 3"
+                          value={desiredLessons}
+                          onChange={e => setDesiredLessons(e.target.value)}
+                          className={inputClass} />
+                      </div>
+
+                      {isMinor && (
+                        <div className="space-y-2">
+                          <Label htmlFor="studentParentContact" className="text-slate-300">
+                            Parent / Guardian contact
+                            <span className="ml-1 text-xs text-amber-400">Required for minors</span>
+                          </Label>
+                          <Input id="studentParentContact" type="text"
+                            placeholder="+1 555 000 0000 / parent@email.com"
+                            value={parentContact}
+                            onChange={e => setParentContact(e.target.value)}
+                            required
+                            className={inputClass} />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}

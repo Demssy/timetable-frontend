@@ -7,11 +7,14 @@ export type DayOfWeek =
   | 'SATURDAY'
   | 'SUNDAY';
 
+export type AvailabilityRole = 'TEACHER' | 'STUDENT';
+
 export interface WeeklyAvailabilityDTO {
   id: number;
   dayOfWeek: DayOfWeek;
   startTime: string; // "HH:mm:ss"
   endTime: string;   // "HH:mm:ss"
+  availabilityRole: AvailabilityRole;
 }
 
 export interface ResourceUnavailabilityDTO {
@@ -20,6 +23,7 @@ export interface ResourceUnavailabilityDTO {
   startTime: string;
   endTime: string;
   reason: string | null;
+  availabilityRole: AvailabilityRole;
 }
 
 export interface UserResponse {
@@ -27,7 +31,10 @@ export interface UserResponse {
   email: string;
   fullName: string;
   role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+  /** All authorities, e.g. ['ROLE_TEACHER', 'ROLE_STUDENT'] */
+  roles?: string[];
   isActive: boolean;
+  // Contain entries of BOTH roles - always filter by availabilityRole
   weeklyAvailabilities: WeeklyAvailabilityDTO[];
   oneTimeUnavailabilities: ResourceUnavailabilityDTO[];
 }
@@ -36,6 +43,7 @@ export interface WeeklyAvailabilityRequest {
   dayOfWeek: DayOfWeek;
   startTime: string; // "HH:mm:ss"
   endTime: string;   // "HH:mm:ss"
+  availabilityRole: AvailabilityRole;
 }
 
 export interface DanceStyleDTO {

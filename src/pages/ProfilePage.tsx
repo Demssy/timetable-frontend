@@ -5,19 +5,58 @@ import { Card, CardContent, CardTitle, CardDescription } from "@/components/ui/c
 import { Button } from "@/components/ui/button"
 import { WeeklyAvailabilityManager } from "@/components/WeeklyAvailabilityManager"
 import { OneTimeUnavailabilityManager } from "@/components/OneTimeUnavailabilityManager"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
+import { InfoTooltip } from "@/components/ui/info-tooltip"
+import toast, { Toaster } from "react-hot-toast"
+import { getMyWeeklyAvailability, getUserUnavailability } from "@/features/availability/api/availabilityApi"
 import { userService } from "@/services/userService"
 import { teacherService } from "@/services/teacherService"
 import type { WeeklyAvailability, OneTimeUnavailability, StudentResponse } from "@/types/user"
 import type { TeacherResponse } from "@/types/teacher"
-import { UserRole } from "@/types/enums"
+import { UserRole, type AvailabilityRole } from "@/types/enums"
 import { cn } from "@/lib/utils"
 
-export default function ProfilePage() {
-  const { user, refreshUser } = useAuth()
+interface AvailabilityDraft {
+  weekly: WeeklyAvailability[]
+  oneTime: OneTimeUnavailability[]
+}
 
-  // ─── Availability state ────────────────────────────────────────────────────
-  const [weeklyAvailabilities, setWeeklyAvailabilities] = useState<WeeklyAvailability[]>([])
-  const [oneTimeUnavailabilities, setOneTimeUnavailabilities] = useState<OneTimeUnavailability[]>([])
+const EMPTY_DRAFT: AvailabilityDraft = { weekly: [], oneTime: [] }
+
+const ROLE_TAB_OPTIONS: { value: AvailabilityRole; label: string }[] = [
+  { value: "TEACHER", label: "Availability as Teacher" },
+  { value: "STUDENT", label: "Availability as Student" },
+]
+
+const AVAILABILITY_TOOLTIP =
+  "Configure the hours when you are available to teach, and separately configure when you can attend classes as a student."
+
+export default function ProfilePage() {
+  const { user, refreshUser, isDualRole, isTeacher: hasTeacherRole, isStudent: hasStudentRole } = useAuth()
+
+  // ─── Availability state (one draft per role so grids never overwrite each other) ──
+  // Single-role users always use their own role; legacy sessions fall back to user.role
+  const defaultAvailabilityRole: AvailabilityRole =
+    hasStudentRole && !hasTeacherRole
+      ? "STUDENT"
+      : hasTeacherRole
+        ? "TEACHER"
+        : user?.role === UserRole.STUDENT
+          ? "STUDENT"
+          : "TEACHER"
+  const [roleTab, setRoleTab] = useState<AvailabilityRole>("TEACHER")
+  const availabilityRole: AvailabilityRole = isDualRole ? roleTab : defaultAvailabilityRole
+
+  const [drafts, setDrafts] = useState<Record<AvailabilityRole, AvailabilityDraft>>({
+    TEACHER: EMPTY_DRAFT,
+    STUDENT: EMPTY_DRAFT,
+  })
+  const weeklyAvailabilities = drafts[availabilityRole].weekly
+  const oneTimeUnavailabilities = drafts[availabilityRole].oneTime
+  const setWeeklyAvailabilities = (items: WeeklyAvailability[]) =>
+    setDrafts((prev) => ({ ...prev, [availabilityRole]: { ...prev[availabilityRole], weekly: items } }))
+  const setOneTimeUnavailabilities = (items: OneTimeUnavailability[]) =>
+    setDrafts((prev) => ({ ...prev, [availabilityRole]: { ...prev[availabilityRole], oneTime: items } }))
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -54,13 +93,50 @@ export default function ProfilePage() {
   const [preferenceError, setPreferenceError] = useState<string | null>(null)
   const [togglingTeacherId, setTogglingTeacherId] = useState<number | null>(null)
 
-  // Sync availability from AuthContext on user identity change
+  // Sync availability from AuthContext on user identity change.
+  // The user payload contains entries of BOTH roles, so always filter by availabilityRole.
   useEffect(() => {
-    if (user) {
-      setWeeklyAvailabilities(user.weeklyAvailabilities ?? [])
-      setOneTimeUnavailabilities(user.oneTimeUnavailabilities ?? [])
+    if (!user) return
+    const byRole = <T extends { availabilityRole?: AvailabilityRole }>(
+      items: T[] | undefined,
+      role: AvailabilityRole,
+    ) => (items ?? []).filter((i) => (i.availabilityRole ?? defaultAvailabilityRole) === role)
+
+    setDrafts({
+      TEACHER: {
+        weekly: byRole(user.weeklyAvailabilities, "TEACHER"),
+        oneTime: byRole(user.oneTimeUnavailabilities, "TEACHER"),
+      },
+      STUDENT: {
+        weekly: byRole(user.weeklyAvailabilities, "STUDENT"),
+        oneTime: byRole(user.oneTimeUnavailabilities, "STUDENT"),
+      },
+    })
+  }, [user, defaultAvailabilityRole])
+
+  // Dual-role users: refetch the grid of the active tab from the role-aware endpoints
+  const userId = user?.id
+  useEffect(() => {
+    if (userId === undefined || !isDualRole) return
+    let aborted = false
+    Promise.all([getMyWeeklyAvailability(roleTab), getUserUnavailability(userId, roleTab)])
+      .then(([weekly, oneTime]) => {
+        if (aborted) return
+        setDrafts((prev) => ({
+          ...prev,
+          [roleTab]: {
+            weekly,
+            oneTime: oneTime.map((o) => ({ ...o, reason: o.reason ?? undefined })),
+          },
+        }))
+      })
+      .catch(() => {
+        // Keep the data derived from the /me payload
+      })
+    return () => {
+      aborted = true
     }
-  }, [user])
+  }, [userId, isDualRole, roleTab])
 
   // Load role-specific data
   useEffect(() => {
@@ -69,27 +145,30 @@ export default function ProfilePage() {
     setPreferenceError(null)
     setIsLoadingPreferences(true)
 
-    if (user.role === UserRole.STUDENT) {
-      Promise.all([
-        teacherService.getAllTeachers(),
-        userService.getPreferredTeachers(),
-      ])
-        .then(([teachers, preferred]) => {
-          setAllTeachers(teachers)
-          setPreferredTeacherIds(new Set(preferred.map((t) => t.id)))
-        })
-        .catch((err) => setPreferenceError(err instanceof Error ? err.message : "Failed to load teachers."))
-        .finally(() => setIsLoadingPreferences(false))
-    } else if (user.role === UserRole.TEACHER) {
-      teacherService
-        .getMyPrivateStudents()
-        .then(setPrivateStudents)
-        .catch((err) => setPreferenceError(err instanceof Error ? err.message : "Failed to load students."))
-        .finally(() => setIsLoadingPreferences(false))
-    } else {
-      setIsLoadingPreferences(false)
+    // Dual-role users load both the student part and the teacher part
+    const loadAsStudent = user.role === UserRole.STUDENT || (hasStudentRole && user.role !== UserRole.ADMIN)
+    const loadAsTeacher = user.role === UserRole.TEACHER || (hasTeacherRole && user.role !== UserRole.ADMIN)
+
+    const tasks: Promise<void>[] = []
+    if (loadAsStudent) {
+      tasks.push(
+        Promise.all([teacherService.getAllTeachers(), userService.getPreferredTeachers()]).then(
+          ([teachers, preferred]) => {
+            // A dual-role user must not pick themselves as a private-lesson teacher
+            setAllTeachers(teachers.filter((t) => t.id !== user.id))
+            setPreferredTeacherIds(new Set(preferred.map((t) => t.id)))
+          },
+        ),
+      )
     }
-  }, [user])
+    if (loadAsTeacher) {
+      tasks.push(teacherService.getMyPrivateStudents().then(setPrivateStudents))
+    }
+
+    Promise.all(tasks)
+      .catch((err) => setPreferenceError(err instanceof Error ? err.message : "Failed to load data."))
+      .finally(() => setIsLoadingPreferences(false))
+  }, [user, hasStudentRole, hasTeacherRole])
 
   // Load desiredLessonsPerWeek from profile endpoint
   useEffect(() => {
@@ -137,12 +216,21 @@ export default function ProfilePage() {
     setSaveError(null)
     setSaveSuccess(false)
     try {
-      await userService.updateAvailability({ weeklyAvailabilities, oneTimeUnavailabilities })
+      // Every item is tagged with the active role; only that role's data is replaced
+      await userService.updateAvailability(
+        {
+          weeklyAvailabilities: weeklyAvailabilities.map((w) => ({ ...w, availabilityRole })),
+          oneTimeUnavailabilities: oneTimeUnavailabilities.map((o) => ({ ...o, availabilityRole })),
+        },
+        availabilityRole,
+      )
       await refreshUser()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save schedule.")
+      const message = err instanceof Error ? err.message : "Failed to save schedule."
+      setSaveError(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -234,6 +322,7 @@ export default function ProfilePage() {
 
   return (
     <>
+    <Toaster position="top-right" />
     <div className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
       {/* ─── Left column ───────────────────────────────────────────────────── */}
       <div className="w-full lg:w-2/5 space-y-4">
@@ -337,7 +426,19 @@ export default function ProfilePage() {
 
       {/* ─── Right column: Availability + Role-specific sections ─────────── */}
       <div className="w-full lg:w-3/5 space-y-6">
-        <h2 className="text-3xl font-bold text-white">Availability &amp; Schedule</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-3xl font-bold text-white">Availability &amp; Schedule</h2>
+          {isDualRole && <InfoTooltip text={AVAILABILITY_TOOLTIP} />}
+        </div>
+
+        {isDualRole && (
+          <SegmentedTabs
+            aria-label="Availability role"
+            options={ROLE_TAB_OPTIONS}
+            value={roleTab}
+            onChange={setRoleTab}
+          />
+        )}
 
         {/* Weekly availability card */}
         <Card className="bg-slate-900/80 border-slate-800">
@@ -464,7 +565,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* ── STUDENT: Preferred Teachers for Private Lessons ────────────── */}
-        {isStudent && (
+        {(isStudent || (hasStudentRole && user?.role !== UserRole.ADMIN)) && (
           <section className="space-y-4">
             <h2 className="text-2xl font-bold text-white">Private Lesson Preferences</h2>
             <p className="text-slate-400 text-sm">
@@ -559,7 +660,7 @@ export default function ProfilePage() {
         )}
 
         {/* ── TEACHER: My Private Lesson Students ───────────────────────── */}
-        {isTeacher && (
+        {(isTeacher || (hasTeacherRole && user?.role !== UserRole.ADMIN)) && (
           <section className="space-y-4">
             <h2 className="text-2xl font-bold text-white">My Private Lesson Students</h2>
             <p className="text-slate-400 text-sm">

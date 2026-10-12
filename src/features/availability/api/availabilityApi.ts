@@ -2,6 +2,8 @@ import type {
   UserResponse,
   WeeklyAvailabilityDTO,
   WeeklyAvailabilityRequest,
+  ResourceUnavailabilityDTO,
+  AvailabilityRole,
   ScheduledLessonDTO,
 } from '../types/availability.types';
 
@@ -66,6 +68,22 @@ export async function deleteSlot(slotId: number): Promise<void> {
     method: 'DELETE',
   });
   return handleResponse<void>(res);
+}
+
+/** GET /api/availability/weekly?role= — current user's weekly grid for one role */
+export async function getMyWeeklyAvailability(
+  role: AvailabilityRole,
+): Promise<WeeklyAvailabilityDTO[]> {
+  const res = await fetch(`${BASE}/availability/weekly?role=${role}`, defaultInit);
+  return handleResponse<WeeklyAvailabilityDTO[]>(res);
+}
+/** GET /api/unavailability/user/{userId}?role= — one-time exceptions for one role */
+export async function getUserUnavailability(
+  userId: number,
+  role: AvailabilityRole,
+): Promise<ResourceUnavailabilityDTO[]> {
+  const res = await fetch(`${BASE}/unavailability/user/${userId}?role=${role}`, defaultInit);
+  return handleResponse<ResourceUnavailabilityDTO[]>(res);
 }
 
 /** GET /api/admin/lessons — all lessons (used for metrics) */

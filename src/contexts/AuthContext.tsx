@@ -7,6 +7,9 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  isTeacher: boolean
+  isStudent: boolean
+  isDualRole: boolean
   login: (credentials: LoginRequest) => Promise<void>
   register: (data: RegisterRequest) => Promise<void>
   logout: () => Promise<void>
@@ -82,10 +85,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Null-safe: roles may be missing for stale sessions
+  const isTeacher = user?.roles?.includes("ROLE_TEACHER") ?? false
+  const isStudent = user?.roles?.includes("ROLE_STUDENT") ?? false
+  const isDualRole = isTeacher && isStudent
+
   const value: AuthContextType = {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isTeacher,
+    isStudent,
+    isDualRole,
     login,
     register,
     logout,

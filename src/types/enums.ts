@@ -31,6 +31,14 @@ export const UserRole = {
 
 export type UserRole = typeof UserRole[keyof typeof UserRole]
 
+/** Role under which an availability entry is stored (backend AvailabilityRole) */
+export const AvailabilityRole = {
+  TEACHER: "TEACHER",
+  STUDENT: "STUDENT",
+} as const
+
+export type AvailabilityRole = typeof AvailabilityRole[keyof typeof AvailabilityRole]
+
 export const DanceStyle = {
   SALSA:     "SALSA",
   BACHATA:   "BACHATA",

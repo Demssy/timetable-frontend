@@ -118,8 +118,16 @@ function normalizeLessons(raw: RawLesson[]): ScheduledLessonDTO[] {
 export const lessonApi = {
   getAll: async () => normalizeLessons(await apiFetch<RawLesson[]>(BASE)),
 
-  getMySchedule: async () =>
-    normalizeLessons(await apiFetch<RawLesson[]>("/api/lessons/my-schedule")),
+  /**
+   * Without `role` the backend falls back to TEACHER for teachers, otherwise STUDENT.
+   * Requesting a role the user does not have returns 403.
+   */
+  getMySchedule: async (role?: "TEACHER" | "STUDENT") =>
+    normalizeLessons(
+      await apiFetch<RawLesson[]>(
+        role ? `/api/lessons/my-schedule?role=${role}` : "/api/lessons/my-schedule",
+      ),
+    ),
 
   getById: async (id: number) => normalizeLesson(await apiFetch<RawLesson>(`${BASE}/${id}`)),
 

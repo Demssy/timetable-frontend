@@ -1,4 +1,4 @@
-import type { DanceLevel, UserRole, DayOfWeek } from "./enums"
+import type { DanceLevel, UserRole, DayOfWeek, AvailabilityRole } from "./enums"
 
 // ─── Student DTO (mirrors backend StudentResponse) ────────────────────────────
 
@@ -33,6 +33,8 @@ export interface WeeklyAvailability {
   dayOfWeek: DayOfWeek
   startTime: string  // format: "HH:mm:ss"
   endTime: string    // format: "HH:mm:ss"
+  /** Role this slot belongs to; entries of both roles may be returned together */
+  availabilityRole?: AvailabilityRole
 }
 
 export interface OneTimeUnavailability {
@@ -41,6 +43,8 @@ export interface OneTimeUnavailability {
   startTime: string  // format: "HH:mm:ss"
   endTime: string    // format: "HH:mm:ss"
   reason?: string
+  /** Role this exception belongs to */
+  availabilityRole?: AvailabilityRole
 }
 
 export interface UpdateAvailabilityRequest {
@@ -54,7 +58,10 @@ export interface User {
   id: number
   email: string
   fullName: string
+  /** Legacy primary role (e.g. 'TEACHER') */
   role: UserRole | string
+  /** All authorities, e.g. ['ROLE_TEACHER', 'ROLE_STUDENT']; may be missing for stale sessions */
+  roles?: string[]
   birthDate?: string
   danceLevel?: DanceLevel | string
   isActive: boolean
@@ -94,5 +101,13 @@ export interface RegisterRequest {
   qualifiedStyleIds?: number[]
   /** Short biography / teaching experience */
   bio?: string | null
+
+  // ── Teacher who is also a student ─────────────────────────────────────────
+  /** True when a teacher also registers as a student (role stays TEACHER) */
+  alsoStudent?: boolean
+  /** Student dance level (only when alsoStudent is true) */
+  studentLevel?: DanceLevel
+  /** Preferred dance style IDs as a student (only when alsoStudent is true) */
+  studentPreferredStyleIds?: number[]
 }
 

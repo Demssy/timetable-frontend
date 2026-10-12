@@ -1,5 +1,6 @@
 import type { User, UpdateAvailabilityRequest, StudentResponse, UpdateStudentProfileRequest } from "@/types/user"
 import type { TeacherResponse } from "@/types/teacher"
+import type { AvailabilityRole } from "@/types/enums"
 
 const API_BASE = "/api/admin/users"
 const USER_API = "/api/user"
@@ -77,11 +78,12 @@ class UserService {
   }
 
   /**
-   * Bulk-replaces the current user's weekly availability and one-time unavailabilities.
-   * Endpoint: PUT /api/user/me/availability
+   * Replaces the current user's availability for ONE role (the other role is untouched).
+   * Endpoint: PUT /api/user/me/availability?role=TEACHER|STUDENT
+   * The role is always sent explicitly; a role the user does not have yields 400.
    */
-  async updateAvailability(data: UpdateAvailabilityRequest): Promise<User> {
-    return this.request<User>(`${USER_API}/me/availability`, {
+  async updateAvailability(data: UpdateAvailabilityRequest, role: AvailabilityRole): Promise<User> {
+    return this.request<User>(`${USER_API}/me/availability?role=${role}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })

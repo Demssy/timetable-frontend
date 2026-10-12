@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { WeeklyAvailabilityDTO, DayOfWeek } from '../types/availability.types';
+import type { WeeklyAvailabilityDTO, DayOfWeek, AvailabilityRole } from '../types/availability.types';
 import { createSlot, updateSlot } from '../api/availabilityApi';
 import { DAY_LABELS_FULL, DAYS_ORDER, formatTime, toBackendTime } from '@/utils/timeUtils';
 import { cn } from '@/lib/utils';
@@ -12,10 +12,13 @@ interface SlotFormModalProps {
   onClose: () => void;
   userId: number;
   existingSlot?: WeeklyAvailabilityDTO;
+  /** Role the slot is saved under (defaults to the existing slot's role or TEACHER) */
+  availabilityRole?: AvailabilityRole;
 }
 
-export function SlotFormModal({ isOpen, onClose, userId, existingSlot }: SlotFormModalProps) {
+export function SlotFormModal({ isOpen, onClose, userId, existingSlot, availabilityRole }: SlotFormModalProps) {
   const queryClient = useQueryClient();
+  const slotRole: AvailabilityRole = availabilityRole ?? existingSlot?.availabilityRole ?? 'TEACHER';
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -34,6 +37,7 @@ export function SlotFormModal({ isOpen, onClose, userId, existingSlot }: SlotFor
         dayOfWeek: formValues.dayOfWeek,
         startTime: toBackendTime(formValues.startTime),
         endTime: toBackendTime(formValues.endTime),
+        availabilityRole: slotRole,
       };
       return existingSlot
         ? updateSlot(existingSlot.id, request)
@@ -162,11 +166,4 @@ export function SlotFormModal({ isOpen, onClose, userId, existingSlot }: SlotFor
     </div>
   );
 }
-
-
-
-
-
-
-
 

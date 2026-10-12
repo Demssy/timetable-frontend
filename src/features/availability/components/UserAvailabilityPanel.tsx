@@ -3,10 +3,11 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
-import type { UserResponse, WeeklyAvailabilityDTO } from '../types/availability.types';
+import type { UserResponse, WeeklyAvailabilityDTO, AvailabilityRole } from '../types/availability.types';
 import { deleteSlot } from '../api/availabilityApi';
 import { WeeklyAvailabilityGrid } from './WeeklyAvailabilityGrid';
 import { SlotFormModal } from './SlotFormModal';
+import { SegmentedTabs } from '@/components/ui/segmented-tabs';
 import { DAY_LABELS, formatTime, getInitials, slotDurationHours } from '@/utils/timeUtils';
 
 interface UserAvailabilityPanelProps {
@@ -18,8 +19,16 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<WeeklyAvailabilityDTO | undefined>(undefined);
+  const [roleTab, setRoleTab] = useState<AvailabilityRole>('TEACHER');
 
   const selectedUser = userId != null ? users.find((u) => u.id === userId) : null;
+
+  // Dual-role users get a tab per role; others use their primary role
+  const primaryRole: AvailabilityRole = selectedUser?.role === 'TEACHER' ? 'TEACHER' : 'STUDENT';
+  const isDual =
+    (selectedUser?.roles?.includes('ROLE_TEACHER') ?? false) &&
+    (selectedUser?.roles?.includes('ROLE_STUDENT') ?? false);
+  const userRole: AvailabilityRole = isDual ? roleTab : primaryRole;
 
   const deleteMutation = useMutation({
     mutationFn: (slotId: number) => deleteSlot(slotId),
@@ -53,9 +62,10 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
     );
   }
 
-  const slots = selectedUser.weeklyAvailabilities;
+  const slots = selectedUser.weeklyAvailabilities.filter(
+    (s) => (s.availabilityRole ?? primaryRole) === userRole,
+  );
   const totalHours = slots.reduce((s, slot) => s + slotDurationHours(slot), 0);
-  const userRole = selectedUser.role === 'TEACHER' ? 'TEACHER' : 'STUDENT';
 
   return (
     <div className="bg-gray-800 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
@@ -98,6 +108,20 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
           </button>
         </div>
       </div>
+
+      {isDual && (
+        <div className="px-4 pt-4">
+          <SegmentedTabs
+            aria-label="Availability role"
+            options={[
+              { value: 'TEACHER', label: 'As Teacher' },
+              { value: 'STUDENT', label: 'As Student' },
+            ]}
+            value={roleTab}
+            onChange={setRoleTab}
+          />
+        </div>
+      )}
 
       {/* Grid */}
       <div className="p-4">
@@ -164,6 +188,7 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
         onClose={() => setIsModalOpen(false)}
         userId={selectedUser.id}
         existingSlot={editingSlot}
+        availabilityRole={userRole}
       />
     </div>
   );
