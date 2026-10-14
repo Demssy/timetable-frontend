@@ -1,4 +1,6 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import { WeeklyTimetable } from "@/components/weekly-timetable"
 import { useAuth } from "@/contexts/AuthContext"
 import { UserRole } from "@/types/enums"
@@ -6,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { CalendarDays, Users } from "lucide-react"
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { user, isDualRole } = useAuth()
+  const [viewAs, setViewAs] = useState<"teacher" | "student">("teacher")
   const showMySchedule =
     user?.role === UserRole.STUDENT || user?.role === UserRole.TEACHER
 
@@ -32,7 +35,19 @@ export default function HomePage() {
         </div>
       )}
 
-      <WeeklyTimetable />
+      {isDualRole && (
+        <SegmentedTabs
+          aria-label="Schedule role"
+          options={[
+            { value: "teacher", label: "As Teacher" },
+            { value: "student", label: "As Student" },
+          ]}
+          value={viewAs}
+          onChange={setViewAs}
+        />
+      )}
+
+      <WeeklyTimetable key={viewAs} viewAs={isDualRole ? viewAs : undefined} />
     </div>
   )
 }

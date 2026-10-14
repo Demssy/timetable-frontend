@@ -49,10 +49,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth()
   }, [])
 
+  // Login/register responses may omit `roles`, so always reload the full profile from /user/me.
+  // Without `roles` a dual-role user is treated as single-role and student lessons are never requested.
+  const loadFullUser = async (fallback: User): Promise<User> => {
+    try {
+      return await authService.getCurrentUser()
+    } catch {
+      return fallback
+    }
+  }
+
   const login = async (credentials: LoginRequest) => {
     try {
       const loggedInUser  = await authService.login(credentials)
-      setUser(loggedInUser)
+      setUser(await loadFullUser(loggedInUser))
 
     } catch (error) {
       console.error("Login failed:", error)
@@ -63,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: RegisterRequest) => {
     try {
       const registeredUser = await authService.register(data)
-      setUser(registeredUser)
+      setUser(await loadFullUser(registeredUser))
     } catch (error) {
       console.error("Registration failed:", error)
       throw error

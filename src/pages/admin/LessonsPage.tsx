@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -120,8 +121,8 @@ export function LessonsPage() {
   const displayedLessons = useMemo(() => {
     let result = lessons
 
-    if (filterType === "group")   result = result.filter(l => !l.isPrivate)
-    if (filterType === "private") result = result.filter(l =>  l.isPrivate)
+    if (filterType === "group")   result = result.filter(l => l.danceGroup != null)
+    if (filterType === "private") result = result.filter(l => !l.danceGroup)
 
     if (filterTeacherId !== "all") {
       result = result.filter(l => l.teacher?.id === filterTeacherId)
@@ -138,8 +139,8 @@ export function LessonsPage() {
   /** Per-tab counts for the filter toolbar. */
   const counts = useMemo(() => ({
     all:     lessons.length,
-    group:   lessons.filter(l => !l.isPrivate).length,
-    private: lessons.filter(l =>  l.isPrivate).length,
+    group:   lessons.filter(l => l.danceGroup != null).length,
+    private: lessons.filter(l => !l.danceGroup).length,
   }), [lessons])
 
   // ── Sorted timeslots ────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ export function LessonsPage() {
               >
                 {type === "group"   && <Users className="h-3 w-3" />}
                 {type === "private" && <UserIcon className="h-3 w-3" />}
-                {type === "all" ? "All" : type === "group" ? "Group" : "Private"}
+                {type === "all" ? "All" : type === "group" ? "Group" : "Private Templates"}
                 <span className={cn(
                   "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
                   filterType === type ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
@@ -418,9 +419,9 @@ export function LessonsPage() {
                   return (
                     <tr key={lesson.id} className="border-b transition-colors hover:bg-muted/50">
                       <td className="p-3 text-muted-foreground">{lesson.id}</td>
-                      <td className="p-3">
-                        {lesson.isPrivate
-                          ? <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 text-purple-400 px-2 py-0.5 text-xs font-semibold"><UserIcon className="h-3 w-3" />Private</span>
+                      <td className="p-3 font-medium">
+                        {!lesson.danceGroup
+                          ? <Badge variant="secondary">Private Slot</Badge>
                           : <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/20 text-sky-400 px-2 py-0.5 text-xs font-semibold"><Users className="h-3 w-3" />Group</span>
                         }
                       </td>
@@ -430,8 +431,8 @@ export function LessonsPage() {
                         </span>
                       </td>
                       <td className="p-3 font-medium">
-                        {lesson.isPrivate && !lesson.student ? (
-                          <span className="text-muted-foreground italic">Open Slot</span>
+                        {!lesson.danceGroup && !lesson.student ? (
+                          <span className="text-muted-foreground italic">Open slot (solver will assign)</span>
                         ) : (
                           lessonSubject(lesson)
                         )}
@@ -452,9 +453,9 @@ export function LessonsPage() {
                         </div>
                       </td>
                       <td className="p-3 font-mono text-xs text-muted-foreground">
-                        {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : "—"}
+                        {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : <span className="text-muted-foreground italic font-sans">Awaiting schedule</span>}
                       </td>
-                      <td className="p-3 text-muted-foreground">{lesson.room?.name ?? "—"}</td>
+                      <td className="p-3 text-muted-foreground">{lesson.room?.name ?? <span className="italic">Awaiting schedule</span>}</td>
                       <td className="p-3">
                         <div className="flex items-center justify-center">
                           <Checkbox

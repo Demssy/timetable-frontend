@@ -111,17 +111,23 @@ function findScheduleForWeek(weekStart: Date, schedules: ScheduleMetadataDTO[]) 
   })
 }
 
-export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
+interface WeeklyTimetableProps {
+  mobileOnly?: boolean
+  /** For dual-role users: show the calendar only as a teacher or only as a student. */
+  viewAs?: "teacher" | "student"
+}
+
+export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const isTeacher = user?.role === UserRole.TEACHER
-  const isStudent = user?.role === UserRole.STUDENT
+  const isTeacher = viewAs ? viewAs === "teacher" : user?.role === UserRole.TEACHER
+  const isStudent = viewAs ? viewAs === "student" : user?.role === UserRole.STUDENT
   const isAdmin = user?.role === UserRole.ADMIN
 
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }))
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null)
 
-  // Переключатель между видами "table" и "classic" (оригинальный вид)
+  // Switch between "table" and "classic" (original) views
   const [viewMode, setViewMode] = useState<"table" | "classic">("table")
 
   const [filter, setFilter] = useState<number | "all">("all")
@@ -178,7 +184,9 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
         // Fetch solution for the active schedule
         const solution = await solverApi.getSolution(scheduleForWeek.id)
+        // Skip unscheduled templates (no timeslot or room) before mapping to grid cells
         const mappedEvents = solution.lessons
+            .filter((lesson) => lesson.timeslot != null && lesson.room != null)
             .map((lesson) => mapLessonToEvent(lesson))
             .filter((event): event is ScheduledEvent => event !== null)
 
@@ -310,8 +318,8 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
     return filteredEvents.filter((event) => event.day === dayIndex)
   }
 
-  // Расчет позиции для Классического вида (Абсолютное позиционирование).
-  // Каждый час = SLOT_HEIGHT_PX px. Начало отсчёта — GRID_START_HOUR.
+  // Position calculation for the Classic view (absolute positioning).
+  // Each hour = SLOT_HEIGHT_PX px. The origin is GRID_START_HOUR.
   const getEventPosition = (event: ScheduledEvent) => {
     const startHour    = Number.parseInt(event.startTime.split(":")[0])
     const startMinutes = Number.parseInt(event.startTime.split(":")[1])
@@ -329,7 +337,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
   return (
       <div className="space-y-6 select-none text-left">
-        {/* Шапка календаря */}
+        {/* Calendar header */}
         <div className="flex flex-col xl:flex-row items-center justify-between gap-4 rounded-lg border border-border bg-card p-3">
 
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
@@ -357,7 +365,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
 
             <div className="hidden md:block h-8 w-px bg-border"></div>
 
-            {/* Легенда учителей — только для ADMIN */}
+            {/* Teacher legend - ADMIN only */}
             {!isTeacher && !isStudent && (
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -388,7 +396,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 w-full xl:w-auto">
-            {/* ПЕРЕКЛЮЧАТЕЛЬ ВИДОВ */}
+            {/* VIEW SWITCHER */}
             <div className="hidden lg:flex items-center gap-1 mr-2 bg-muted/30 p-1 rounded-md border border-border">
               <button
                   onClick={() => setViewMode("table")}
@@ -473,7 +481,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
           </div>
         </div>
 
-        {/* ДЕСКТОП: ТАБЛИЦА (Новый вид - Секции) */}
+        {/* DESKTOP: TABLE (new view - sections) */}
         {viewMode === "table" && (
             <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
               <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
@@ -537,12 +545,12 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
             </div>
         )}
 
-        {/* ДЕСКТОП: КЛАССИЧЕСКИЙ ВИД (Старый оригинальный фон и абсолютное позиционирование) */}
+        {/* DESKTOP: CLASSIC VIEW (original background and absolute positioning) */}
         {viewMode === "classic" && (
             <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
               <div className="min-w-[1000px] border border-border/50 rounded-lg overflow-hidden bg-background">
 
-                {/* Заголовок: Пустой угол слева, Дни недели сверху */}
+                {/* Header: empty corner on the left, weekdays on top */}
                 <div className="flex bg-muted/20 border-b border-border/50">
                   <div className="w-[80px] shrink-0 border-r border-border/50" />
                   <div className="flex-1 grid grid-cols-7">
@@ -554,9 +562,9 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                   </div>
                 </div>
 
-                {/* Сетка: Время слева, Колонки дней с уроками */}
+                {/* Grid: time on the left, day columns with lessons */}
                 <div className="flex">
-                  {/* Колонка времени */}
+                  {/* Time column */}
                   <div className="w-[80px] shrink-0 border-r border-border/50 bg-muted/5">
                     {TIME_SLOTS.map((time) => (
                         <div key={time} className="h-28 border-b border-border/30 pr-3 text-right text-xs font-mono text-muted-foreground flex items-start justify-end pt-2">
@@ -565,19 +573,19 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
                     ))}
                   </div>
 
-                  {/* Колонки дней */}
+                  {/* Day columns */}
                   <div className="flex-1 grid grid-cols-7">
                     {DAYS.map((day, dayIndex) => {
                       const dayEvents = getEventsForDay(dayIndex)
 
                       return (
                           <div key={day} className="relative border-r border-border/50 last:border-r-0">
-                            {/* Линии сетки часов (тонкие, прозрачные) */}
+                            {/* Hour grid lines (thin, transparent) */}
                             {TIME_SLOTS.map((time) => (
                                 <div key={time} className="h-28 border-b border-border/20" />
                             ))}
 
-                            {/* Уроки (Абсолютное позиционирование) */}
+                            {/* Lessons (absolute positioning) */}
                             {Object.values(
                                 dayEvents.reduce((acc, event) => {
                                   const key = `${event.startTime}-${event.endTime}`
@@ -668,7 +676,7 @@ export function WeeklyTimetable({mobileOnly}: {mobileOnly?: boolean}) {
             </div>
         )}
 
-        {/* Модальное окно */}
+        {/* Modal */}
         {selectedEvent && (
             <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"

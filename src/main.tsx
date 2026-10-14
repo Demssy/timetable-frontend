@@ -55,6 +55,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="login" element={<LoginPage />} />
             <Route path="signup" element={<SignInPage />} />
             <Route path="profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="availability" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="groups" element={<ProtectedRoute><GroupsPage /></ProtectedRoute>} />
             <Route path="my-schedule" element={<ProtectedRoute><MySchedulePage /></ProtectedRoute>} />
           </Route>

@@ -2,7 +2,11 @@ import { Link, Outlet } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { UserRole } from "@/types/enums"
-import { LayoutGrid, Home, User, ShieldCheck, LogIn, UserPlus, LogOut, X, ChevronDown, Loader2, Sparkles } from "lucide-react"
+import {
+  LayoutGrid, Home, User, ShieldCheck, LogIn, UserPlus, LogOut, X, ChevronDown, Loader2, Sparkles,
+  CalendarDays, Clock, Users, BarChart3, DoorOpen, Timer, Cpu,
+  type LucideIcon,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { teacherService } from "@/services/teacherService"
 import type { DanceStyleDTO, TeacherResponse } from "@/types/teacher"
@@ -17,8 +21,73 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+interface NavItem {
+  to: string
+  label: string
+  icon: LucideIcon
+}
+
+const STUDENT_NAV: NavItem[] = [
+  { to: "/my-schedule", label: "My Schedule", icon: CalendarDays },
+  { to: "/availability", label: "My Availability", icon: Clock },
+  { to: "/groups", label: "Browse Groups", icon: Users },
+  { to: "/profile", label: "Profile", icon: User },
+]
+
+const TEACHER_NAV: NavItem[] = [
+  { to: "/my-schedule", label: "My Teaching & Classes", icon: CalendarDays },
+  { to: "/availability", label: "Set Availability", icon: Clock },
+  { to: "/groups", label: "My Groups", icon: Users },
+  { to: "/profile", label: "Profile", icon: User },
+]
+
+const ADMIN_NAV: NavItem[] = [
+  { to: "/admin", label: "Dashboard", icon: ShieldCheck },
+  { to: "/admin/schedules", label: "Schedules (Solver)", icon: Cpu },
+  { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/rooms", label: "Rooms", icon: DoorOpen },
+  { to: "/admin/timeslots", label: "Lesson Times", icon: Timer },
+  { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+]
+
+const NAV_LINK_CLASS =
+  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+
+function getInitials(fullName: string): string {
+  return fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("")
+}
+
 export default function Layout() {
-  const { isAuthenticated, user, logout, refreshUser } = useAuth()
+  const { isAuthenticated, user, logout, refreshUser, isTeacher, isStudent, isDualRole } = useAuth()
+
+  const isAdmin = user?.role === UserRole.ADMIN
+  const showTeacher = !isAdmin && (isTeacher || user?.role === UserRole.TEACHER)
+  const showStudent = !isAdmin && (isStudent || user?.role === UserRole.STUDENT || (!showTeacher && !!user))
+
+  // Merge role-specific links; dual-role users get a deduplicated set
+  const roleNav: NavItem[] = (() => {
+    if (isAdmin) return [{ to: "/profile", label: "Profile", icon: User }]
+    const merged = new Map<string, NavItem>()
+    if (showTeacher) TEACHER_NAV.forEach((item) => merged.set(item.to, item))
+    if (showStudent) {
+      STUDENT_NAV.forEach((item) => {
+        if (!merged.has(item.to)) merged.set(item.to, item)
+      })
+    }
+    return Array.from(merged.values())
+  })()
+
+  const roleBadges: string[] = isAdmin
+    ? ["🛡️ Administrator"]
+    : [
+        ...(showStudent ? ["🎓 Student"] : []),
+        ...(showTeacher ? ["💃 Teacher"] : []),
+      ]
   const [isNavOpen, setIsNavOpen] = useState(false)
   const [isUserInfoOpen, setIsUserInfoOpen] = useState(false)
   const [isTeacherEditOpen, setIsTeacherEditOpen] = useState(false)
@@ -127,6 +196,25 @@ export default function Layout() {
           </Link>
 
           {/* Nav trigger */}
+          <div className="flex items-center gap-3">
+            {isAuthenticated && user && (
+              <div
+                className={cn(
+                  "hidden md:flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/60 p-0.5",
+                  !isDualRole && "border-transparent bg-transparent p-0"
+                )}
+                aria-label="Active role"
+              >
+                {roleBadges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="rounded-full bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-200"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            )}
           <div className="relative">
             <button
               type="button"
@@ -140,6 +228,10 @@ export default function Layout() {
             >
               {isNavOpen ? (
                 <X className="h-4 w-4" />
+              ) : isAuthenticated && user ? (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                  {getInitials(user.fullName)}
+                </span>
               ) : (
                 <LayoutGrid className="h-4 w-4" />
               )}
@@ -171,7 +263,7 @@ export default function Layout() {
                             <span className="text-sm font-medium text-white truncate max-w-[9.5rem]">
                               {user.fullName}
                             </span>
-                            <span className="text-[11px] text-slate-500 capitalize">{user.role}</span>
+                            <span className="text-[11px] text-slate-400">{roleBadges.join(" · ")}</span>
                           </span>
                           <ChevronDown
                             className={cn(
@@ -221,62 +313,54 @@ export default function Layout() {
                       </>
                     )}
 
-                    <Link
-                      to="/"
-                      onClick={closeNav}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                    >
+                    <Link to="/" onClick={closeNav} className={NAV_LINK_CLASS}>
                       <Home className="h-4 w-4 text-slate-400" />
                       Home
                     </Link>
 
                     {!isAuthenticated ? (
                       <>
-                        <Link
-                          to="/login"
-                          onClick={closeNav}
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                        >
+                        <Link to="/login" onClick={closeNav} className={NAV_LINK_CLASS}>
                           <LogIn className="h-4 w-4 text-slate-400" />
-                          Login
+                          Log in
                         </Link>
-                        <Link
-                          to="/signup"
-                          onClick={closeNav}
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                        >
+                        <Link to="/signup" onClick={closeNav} className={NAV_LINK_CLASS}>
                           <UserPlus className="h-4 w-4 text-slate-400" />
-                          Sign Up
+                          Sign up
                         </Link>
                       </>
                     ) : (
                       <>
-                        {user?.role === UserRole.ADMIN && (
-                          <Link
-                            to="/admin"
-                            onClick={closeNav}
-                            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                          >
-                            <ShieldCheck className="h-4 w-4 text-slate-400" />
-                            Admin
+                        {roleNav.map((item) => (
+                          <Link key={item.to} to={item.to} onClick={closeNav} className={NAV_LINK_CLASS}>
+                            <item.icon className="h-4 w-4 text-slate-400" />
+                            {item.label}
                           </Link>
-                        )}
-                        <Link
-                          to="/profile"
-                          onClick={closeNav}
-                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                        >
-                          <User className="h-4 w-4 text-slate-400" />
-                          Profile
-                        </Link>
+                        ))}
 
+                        {isAdmin && (
+                          <>
+                            <div className="my-1 border-t border-slate-800" />
+                            <p className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                              Administration
+                            </p>
+                            {ADMIN_NAV.map((item) => (
+                              <Link key={item.to} to={item.to} onClick={closeNav} className={NAV_LINK_CLASS}>
+                                <item.icon className="h-4 w-4 text-slate-400" />
+                                {item.label}
+                              </Link>
+                            ))}
+                          </>
+                        )}
+
+                        <div className="my-1 border-t border-slate-800" />
                         <button
                           type="button"
                           onClick={handleLogout}
                           className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
                         >
                           <LogOut className="h-4 w-4" />
-                          Logout
+                          Log out
                         </button>
                       </>
                     )}
@@ -284,6 +368,7 @@ export default function Layout() {
                 </div>
               </>
             )}
+          </div>
           </div>
         </div>
       </header>

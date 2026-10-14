@@ -158,7 +158,7 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
                     {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
                   </span>
                   <span className="text-xs text-gray-500">
-                    ({slotDurationHours(slot).toFixed(1)} ч)
+                    ({slotDurationHours(slot).toFixed(1)} h)
                   </span>
                 </div>
                 <div className="flex gap-1">

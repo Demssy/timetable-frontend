@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { useSolverPolling } from "@/hooks/useSolverPolling"
 import { ScoreExplanationPanel } from "@/components/ScoreExplanationPanel"
 import { UnmetStudentsPanel } from "@/components/UnmetStudentsPanel"
+
 import { AddManualLessonModal, type ManualLessonData } from "@/components/AddManualLessonModal"
 import { deleteScheduledLesson } from "@/api/lessonApi"
 // ─── Grid configuration ─────────────────────────────────────────────────────
@@ -706,6 +707,7 @@ export function TimetableViewPage() {
           <ScoreExplanationPanel scheduleId={scheduleId} hardScore={stats.hardScore}
             explanation={scoreExplanation} isLoading={isLoadingReports}
             error={explanationError} onRequestLoad={fetchReports} />
+
           <UnmetStudentsPanel unmetStudents={unmetStudents} isLoading={isLoadingReports} error={unmetError} />
         </div>
       )}

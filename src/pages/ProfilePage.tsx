@@ -328,6 +328,16 @@ export default function ProfilePage() {
       <div className="w-full lg:w-2/5 space-y-4">
         <h1 className="text-3xl font-bold text-white">Profile</h1>
 
+        {/* Info banner about auto-generated private lesson templates */}
+        {isTeacher && (
+          <div className="flex items-start gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              You have 5 active templates for private lessons. The algorithm will automatically pick a time and students for them when generating the schedule.
+            </span>
+          </div>
+        )}
+
         {/* ─── Lesson Preferences card (STUDENT & TEACHER only) ─────────── */}
         {(isStudent || isTeacher) && (
           <Card className="bg-slate-900/80 border-slate-800">

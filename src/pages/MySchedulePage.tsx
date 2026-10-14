@@ -8,14 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import { cn } from "@/lib/utils"
+import { Clock, CalendarClock } from "lucide-react"
+import { EmptyState } from "@/components/EmptyState"
+import { getMyWeeklyAvailability } from "@/features/availability/api/availabilityApi"
 
 type LessonRole = "TEACHER" | "STUDENT"
 type ViewMode = LessonRole | "ALL"
 
 const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
-  { value: "TEACHER", label: "Teaching Schedule" },
-  { value: "STUDENT", label: "My Classes (as student)" },
-  { value: "ALL", label: "All" },
+  { value: "TEACHER", label: "I teach" },
+  { value: "STUDENT", label: "I learn" },
+  { value: "ALL", label: "Everything" },
 ]
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -247,7 +250,7 @@ export function MySchedulePage() {
   const [lessonRoles, setLessonRoles] = useState<Record<number, LessonRole>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>("TEACHER")
+  const [viewMode, setViewMode] = useState<ViewMode>("ALL")
 
   const [cancelTarget, setCancelTarget] = useState<ScheduledLessonDTO | null>(null)
   const [cancelActionLoading, setCancelActionLoading] = useState(false)
@@ -272,11 +275,17 @@ export function MySchedulePage() {
       }
 
       if (viewMode === "ALL") {
-        // No combined endpoint: load both roles in parallel and tag client-side
-        const [teaching, attending] = await Promise.all([
+        // No combined endpoint: load both roles in parallel and tag client-side.
+        // allSettled keeps one role's lessons visible even if the other request fails.
+        const [teachingRes, attendingRes] = await Promise.allSettled([
           lessonApi.getMySchedule("TEACHER"),
           lessonApi.getMySchedule("STUDENT"),
         ])
+        if (teachingRes.status === "rejected" && attendingRes.status === "rejected") {
+          throw teachingRes.reason
+        }
+        const teaching = teachingRes.status === "fulfilled" ? teachingRes.value : []
+        const attending = attendingRes.status === "fulfilled" ? attendingRes.value : []
         const roles: Record<number, LessonRole> = {}
         const merged: ScheduledLessonDTO[] = []
         for (const l of teaching) {
@@ -313,6 +322,21 @@ export function MySchedulePage() {
       aborted = true
     }
   }, [isDualRole, viewMode, singleRole])
+
+  // Check availability only when the schedule is empty (null = unknown yet)
+  const [hasAvailability, setHasAvailability] = useState<boolean | null>(null)
+  const isScheduleEmpty = !isLoading && !error && lessons.length === 0
+  useEffect(() => {
+    if (!isScheduleEmpty) return
+    let aborted = false
+    const role: LessonRole = isDualRole && viewMode !== "ALL" ? viewMode : singleRole
+    getMyWeeklyAvailability(role)
+      .then((slots) => !aborted && setHasAvailability(slots.length > 0))
+      .catch(() => !aborted && setHasAvailability(null))
+    return () => {
+      aborted = true
+    }
+  }, [isScheduleEmpty, isDualRole, viewMode, singleRole])
 
   const handleConfirmCancel = useCallback(
     async (reason: string) => {
@@ -361,8 +385,8 @@ export function MySchedulePage() {
     <div className="space-y-6 w-full max-w-[1400px] mx-auto px-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-white">My Lessons</h1>
-          <p className="text-slate-400 mt-1">Your personal weekly schedule</p>
+          <h1 className="text-3xl font-bold text-white">My Schedule</h1>
+          <p className="text-slate-400 mt-1">Your lessons for the week</p>
         </div>
 
         {cancelledCount > 0 && (
@@ -403,10 +427,23 @@ export function MySchedulePage() {
       )}
 
       {!isLoading && !error && lessons.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-2">
-          <p className="text-xl font-medium">Schedule not published yet</p>
-          <p className="text-sm">Check back later — the admin has not assigned lessons yet</p>
-        </div>
+        hasAvailability === false ? (
+          <EmptyState
+            icon={<Clock className="h-8 w-8" />}
+            title="Availability not set"
+            description="You haven't set your available hours yet. Click below to choose your days!"
+            actionLabel="Set availability"
+            actionTo="/availability"
+          />
+        ) : (
+          <EmptyState
+            icon={<CalendarClock className="h-8 w-8" />}
+            title="The schedule is still being prepared"
+            description="This week's schedule is still being prepared by the administrator. Make sure your availability is filled in!"
+            actionLabel="Go to availability"
+            actionTo="/availability"
+          />
+        )
       )}
 
       {!isLoading && !error && lessons.length > 0 && (
