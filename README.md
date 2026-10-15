@@ -1,173 +1,192 @@
-# Automated Timetabling System — Frontend
+# Automated Timetabling System for Dance School (Frontend Web Client)
 
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+## 1. Project Overview
 
-Modern web interface for the **Automated Timetabling System**. It provides interactive schedule views for dance-school users and administrative control panels for managing people, resources, lessons, availability, and generated schedules.
+The **Automated Timetabling System for Dance School** frontend is a responsive web client for dance-studio administrators, teachers, and students. It provides tools to manage scheduling inputs, submit and review generated timetables, configure availability, and inspect constraint and assignment reports.
 
-## ✨ Core features
+The client communicates with a Spring Boot REST API. Administrators manage users and scheduling resources and review generated schedules; teachers and students manage their own availability and view lessons relevant to their roles. A user can hold both teacher and student roles.
 
-- **Interactive weekly timetable** — visualise schedules in a weekly grid with lesson details, class legend, and schedule views for users and administrators.
-- **Resource administration** — manage teachers, students, dance groups, rooms, timeslots, lessons, schedules, and availability from dedicated admin pages.
-- **Solver monitoring** — start schedule generation and follow its progress through the `useSolverPolling` hook, which polls the backend solver status until completion.
-- **Schedule quality insights** — view solver scores, assignment status, unmet-student information, and timetable results.
-- **Role-based access control** — public sign-in/sign-up flows, authenticated routes, and administrator-only routes.
-- **Cookie-based authentication** — authentication state is managed with `AuthContext`; requests include HTTP-only JWT cookies and retry once after a token refresh when appropriate.
-- **Availability management and analytics** — collect weekly and one-time availability and explore administrative metrics.
+## 2. Technology Stack and Prerequisites
 
-## 🧰 Tech stack
+### Technology stack
 
-| Area | Technologies |
+| Area | Technologies used |
 | --- | --- |
-| Framework & tooling | React 19, TypeScript 5.9, Vite 7, SWC |
-| UI & styling | Tailwind CSS 4, shadcn/ui-style components built on Radix UI, Lucide React icons |
-| Routing & state | React Router DOM 6, React Context (`AuthContext`), TanStack Query |
-| Scheduling & visualisation | React Big Calendar, dnd-kit, React DnD, Recharts |
-| API client | Fetch API wrappers with typed responses and `credentials: "include"` for Spring Boot REST API communication |
-| Production serving | Express static server with SPA fallback |
+| Framework and language | React 19, TypeScript 5.9 |
+| Build and development | Vite 7, SWC |
+| Styling and UI | Tailwind CSS 4, Radix UI primitives with shadcn/ui-style components, Lucide React |
+| Routing | React Router DOM 6 |
+| Client-side data and state | React Context, TanStack Query 5, component-level React state |
+| API transport | Browser Fetch API wrappers with typed responses and cookie credentials |
+| Calendar and visualization | Custom timetable views, React Big Calendar, dnd-kit, React DnD, Recharts |
+| Production static serving | Express 5 SPA server |
 
-## 🗂️ Project structure
-
-```text
-src/
-├── api/             # Typed API modules and the shared apiFetch client
-├── components/      # Shared UI, layout, forms, route guards, timetable widgets
-│   └── ui/          # Reusable base UI primitives (Button, Card, Input, Dialog, ...)
-├── contexts/        # Cross-cutting React state, including AuthContext
-├── features/        # Feature-oriented modules (for example, availability)
-├── hooks/           # Reusable hooks, including useSolverPolling
-├── pages/           # Route-level pages
-│   └── admin/       # Administrator-only pages and schedule management views
-├── services/        # Application services, including authentication lifecycle logic
-├── types/           # TypeScript DTOs and const-based enum definitions
-└── utils/           # Shared helpers such as time utilities
-```
-
-Additional root-level files:
-
-- `vite.config.ts` — Vite setup, the `@` alias for `src`, Tailwind plugin, and local API proxy.
-- `server/index.js` — Express server for serving the production `dist/` bundle with client-side-routing fallback.
-- `src/main.tsx` — application entry point, router tree, and route protection wiring.
-
-## 🔐 Access model
-
-The application defines `STUDENT`, `TEACHER`, and `ADMIN` roles. Routes are organised as follows:
-
-- **Public:** `/login`, `/signup`
-- **Authenticated:** home, profile, groups, and personal schedule pages
-- **Administrator-only:** `/admin` and resource-management pages for users, teachers, rooms, timeslots, dance groups, lessons, schedules, availability, and analytics
-
-`ProtectedRoute` redirects unauthenticated users to the login page. `AdminRoute` additionally requires the `ADMIN` role.
-
-## 🚀 Getting started
+> **Implementation note:** This repository currently uses React 19 (not React 18) and the Fetch API (not Axios). API calls include credentials for HTTP-only cookie authentication. There is no Axios client or JWT interceptor in the current frontend implementation.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) **18 or later**
-- One package manager: **npm**, **pnpm**, or **Yarn**
-- The Automated Timetabling System Spring Boot backend, available during development at `http://localhost:8080`
+- Node.js **20.19+** (Node.js 20 LTS recommended). Vite 7 requires a recent Node 20 or 22 release.
+- npm **9+**.
+- The Automated Timetabling System Spring Boot backend running at `http://localhost:8080` for API-backed workflows.
 
-### 1. Install dependencies
+## 3. User Experience and Business Workflows
 
-Using npm:
+### 3.1 Authentication and role-aware access
+
+Users sign in or register through the public `/login` and `/signup` pages. `AuthContext` obtains the authenticated profile from the backend, keeps it in React state, and exposes role flags to components. Requests send the HTTP-only authentication cookie; the browser does not store or attach a JWT bearer token in application code.
+
+Protected routes require an authenticated user. Administrator routes are additionally wrapped by `AdminRoute`. The application supports `STUDENT`, `TEACHER`, and `ADMIN` roles, including accounts with both teacher and student roles.
+
+### 3.2 Weekly timetable and lesson operations
+
+`src/components/weekly-timetable.tsx` presents a responsive weekly timetable. Users can move between weeks, jump to the current week, choose a week by date, and switch between table and classic grid views on desktop. Lesson cards show the teacher, room, day, time, and relevant group or student information. The administrator view can filter by teacher; teacher and student views are scoped to the current user's lessons or enrolled groups.
+
+Administrators can open the schedule editor and use `AddManualLessonModal.tsx` to add a private lesson by choosing a teacher and student for a timeslot. Authorized teachers and administrators can cancel lessons, optionally provide a reason, and administrators can restore cancelled lessons. **Room and dance style are shown in lesson information where available; the current weekly timetable does not provide room or dance-style filter controls.**
+
+### 3.3 Schedule generation and post-generation analysis
+
+Administrators create and manage schedules, launch the backend solver, and follow its asynchronous status. The solver API and polling hook retrieve the generated solution for display in the timetable and schedule detail views.
+
+The schedule reports support review of solver quality and assignments:
+
+- **`ScoreExplanationPanel.tsx`** displays hard-score violations, soft penalties, and rewards. Constraint rows are expandable and can show involved users, descriptions, timeslot information, lesson information, match counts, and score impacts.
+- **`TeacherWorkloadPanel.tsx`** summarizes each teacher's requested and assigned lessons, workload difference, and lessons outside availability.
+- **`UnmetStudentsPanel.tsx`** lists students who did not receive all requested lessons, with requested, assigned, and missing counts. It also reports when all students were served.
+- **`AnalyticsDashboardPage.tsx`** provides administrative analytics, including utilization and workload visualizations.
+
+These reports explain the returned solver result; the backend remains responsible for constraint evaluation and schedule generation.
+
+### 3.4 Availability management
+
+The availability feature under `src/features/availability/` provides a weekly time-grid for viewing and editing availability slots. The administrator availability view can select a user, add, edit, and delete slots, and display weekly totals and metrics. For dual-role users, role tabs separate **As Teacher** and **As Student** availability.
+
+`OneTimeUnavailabilityManager.tsx` supports date-specific exceptions with start and end times and an optional reason. Availability data is submitted through the availability API and is distinct from recurring weekly slots.
+
+### 3.5 Dual-role accounts and registration
+
+`MySchedulePage.tsx` supports role-aware lesson views. A dual-role user can switch between **I teach**, **I learn**, and **Everything**; the combined view labels lessons by role. The page also displays cancellation status and availability-related empty states.
+
+`SignUpForm.tsx` adapts its fields to the selected student or teacher registration mode. Teacher registration includes teaching details and an optional **also attend classes as a student** choice, which reveals student preference fields and enables dual-role registration.
+
+## 4. Architecture and State Management
+
+The application is organized around route-level pages, reusable components, feature modules, API wrappers, and backend-aligned TypeScript types.
+
+| Concern | Implementation |
+| --- | --- |
+| Routes and composition | `src/main.tsx` defines the `BrowserRouter` tree, public routes, protected routes, and administrator routes. |
+| Authentication state | `src/contexts/AuthContext.tsx` loads the current user and exposes sign-in, registration, sign-out, loading, and role state. Authentication is held in React memory; the HTTP-only cookie is managed by the backend/browser. |
+| Remote data | Typed API modules in `src/api/` and service modules in `src/services/` perform Fetch requests. TanStack Query is used in feature components for query caching, mutations, and invalidation where appropriate. |
+| Local interaction state | React hooks (`useState`, `useEffect`, `useMemo`, and related hooks) manage component-specific forms, filters, dialogs, loading states, and views. |
+| Domain contracts | Interfaces and enum definitions in `src/types/` and `src/features/availability/types/` describe frontend DTOs and domain values. |
+| Styling | Tailwind CSS utility classes, shared UI primitives, and the `cn()` helper are used for component styling. |
+
+### Directory structure
+
+```text
+src/
+├── api/                  # Fetch client and typed API modules (schedules, solver, rooms, lessons, etc.)
+├── components/           # Shared layout, timetable, reporting panels, forms, and dialogs
+│   ├── calendar/         # Calendar-specific components
+│   └── ui/               # Reusable Radix-based UI primitives
+├── contexts/             # Authentication context
+├── features/
+│   └── availability/     # Availability APIs, components, and DTO types
+├── hooks/                # Reusable hooks, including solver polling
+├── lib/                  # Shared helpers such as cn()
+├── pages/                # Route-level pages
+│   └── admin/            # Administrator resource, schedule, and analytics pages
+├── services/             # Authentication and domain service logic
+├── types/                # Domain models, enums, and backend DTO interfaces
+└── utils/                # Shared date and time helpers
+```
+
+Notable root files include `vite.config.ts` (development port, `@` alias, Tailwind integration, and API proxy), `server/index.js` (production static serving and SPA fallback), and `package.json` (scripts and dependencies).
+
+## 5. Local Setup and Execution
+
+### Step 1: Configure the environment
+
+Create a `.env` file in the project root:
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:8080/api
+```
+
+**Important:** The current API client uses relative `/api/...` paths and does not read `VITE_API_BASE_URL`. During development, Vite proxies `/api` requests to `http://localhost:8080` using the proxy configured in `vite.config.ts`. The variable above is included for the requested environment setup but does not change the current client behavior. For production, configure the deployment web server or reverse proxy to forward `/api` to the backend.
+
+Start the Spring Boot backend at `http://localhost:8080` before testing API-backed functionality.
+
+### Step 2: Install dependencies
 
 ```bash
 npm install
 ```
 
-Equivalent commands for other package managers:
-
-```bash
-pnpm install
-yarn install
-```
-
-### 2. Configure backend connectivity
-
-During local development, Vite proxies every `/api/*` request to:
-
-```text
-http://localhost:8080
-```
-
-This proxy is configured in `vite.config.ts`, so no environment file is required for the default local setup. Start the Spring Boot backend before using authenticated or administrative functionality.
-
-> **About `VITE_API_BASE_URL`:** the current API client deliberately uses relative `/api/...` URLs and does not read `VITE_API_BASE_URL`. If your deployment standard requires the variable, you may record the intended backend origin in `.env.local`:
->
-> ```dotenv
-> VITE_API_BASE_URL=http://localhost:8080
-> ```
->
-> It has no effect until the API client is explicitly updated to consume it. For production, configure your web server or reverse proxy to forward `/api` requests to the Spring Boot service.
-
-### 3. Start development mode
+### Step 3: Start the development server
 
 ```bash
 npm run dev
 ```
 
-The Vite development server runs at [http://localhost:3000](http://localhost:3000). API calls to `/api` are forwarded to the backend on port `8080`.
-
-### 4. Create a production build
+Vite is configured to use `http://localhost:3000` by default. To use the commonly expected port `5173`, start it with:
 
 ```bash
+npm run dev -- --port 5173
+```
+
+The application is then available at `http://localhost:5173` (or `http://localhost:3000` when using the default command). API requests under `/api` are proxied to the backend on port `8080`.
+
+### Step 4: Verify TypeScript and create a production build
+
+Run the requested TypeScript check and production build:
+
+```bash
+npx tsc --noEmit
 npm run build
 ```
 
-The command type-checks the project with `tsc -b` and outputs the optimised application to `dist/`.
+The `build` script runs the TypeScript project build (`tsc -b`) followed by `vite build`, producing static assets in `dist/`.
 
-Preview the Vite build locally:
-
-```bash
-npm run preview
-```
-
-To serve the built SPA through the included Express server:
-
-```bash
-npm run serve
-```
-
-`npm run serve` listens on port `3000` by default; set the server-side `PORT` environment variable to override it. The Express server serves static files and provides an SPA fallback, but it does **not** proxy `/api` to the backend. Configure a reverse proxy in production.
-
-### 5. Lint the codebase
+### Optional commands
 
 ```bash
 npm run lint
+npm run preview
+npm run serve
 ```
 
-## 🔌 Backend integration
+`npm run lint` runs ESLint. `npm run preview` previews the Vite build. `npm run serve` serves the built SPA through Express on port `3000` by default (override with the server-side `PORT` environment variable). The Express server provides SPA fallback but does not proxy backend API requests.
 
-The frontend communicates with the Spring Boot REST API through `/api/...` endpoints.
+## 6. API Integration and Security
 
-- General resource APIs use `apiFetch<T>` from `src/api/client.ts`.
-- Authentication uses `AuthService` from `src/services/authService.ts`.
-- All requests include `credentials: "include"`; do not add an `Authorization` header in the client.
-- On a `401` response, the authentication service attempts `POST /api/auth/refresh` once before treating the session as expired.
-- Current-user data is retrieved from `GET /api/user/me`.
+The frontend communicates with the Spring Boot backend using relative `/api/...` endpoints. General API modules call `apiFetch<T>` from `src/api/client.ts`; authentication lifecycle operations are encapsulated in `src/services/authService.ts`.
 
-The solver workflow is asynchronous: an administrator starts a solve operation, `useSolverPolling` checks its status every two seconds, and the completed solution is then displayed in the timetable view.
+- Requests use `credentials: "include"` so the browser sends the HTTP-only authentication cookie.
+- The frontend does not persist JWTs in local storage or add an `Authorization` bearer header.
+- The shared Fetch wrapper sets JSON request headers, parses successful responses, handles `204 No Content`, and surfaces backend error messages where available.
+- API domains include authentication, users, teachers, dance groups and styles, rooms, timeslots, lessons, schedules, availability, and solver operations.
+- Schedule generation is asynchronous: the frontend starts the solver operation, polls status through `useSolverPolling`, and then requests the resulting solution and reports.
 
-## 📜 Available scripts
+The backend API and its DTO definitions are the source of truth for request and response contracts. Keep frontend interfaces in `src/types/` aligned with the backend when those contracts change.
+
+## 7. Available npm Scripts
 
 | Command | Description |
 | --- | --- |
-| `npm run dev` | Start the Vite development server on port `3000`. |
-| `npm run build` | Type-check and create the production bundle in `dist/`. |
-| `npm run preview` | Preview the Vite production build locally. |
+| `npm run dev` | Start the Vite development server (port `3000` by default). |
+| `npm run build` | Type-check using `tsc -b` and build the production bundle in `dist/`. |
+| `npm run preview` | Preview the production bundle locally. |
 | `npm run lint` | Run ESLint across the project. |
 | `npm run serve` | Serve `dist/` with the included Express SPA server. |
 
-## 🧭 Development conventions
+## 8. Development Conventions
 
-- Prefer named exports and functional React components with typed props.
-- Use the `@/` import alias for modules under `src/`.
-- Keep backend DTOs aligned with interfaces in `src/types/`.
-- Use the shared `cn()` helper when conditionally combining Tailwind class names.
-- Build new administrator features from an API module, a matching DTO, a page in `src/pages/admin/`, and an `AdminRoute` entry in `src/main.tsx`.
+- Prefer functional React components with typed props and named exports for new components.
+- Use the `@/` alias for imports from `src/`.
+- Keep API request and response types aligned with backend DTOs.
+- Reuse primitives from `src/components/ui/` and the `cn()` helper for class composition.
+- Keep network loading and error states visible in user-facing flows.
+- Add new administrator functionality as a cohesive API/type/page feature and register its route behind `AdminRoute` in `src/main.tsx`.
 
 ---
-
-Built for efficient, transparent dance-school schedule management. 💃
