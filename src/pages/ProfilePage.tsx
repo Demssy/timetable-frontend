@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Save, CheckCircle, Heart, HeartOff, Users, Loader2, AlertCircle, ChevronDown, CalendarDays, X, Clock } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { WeeklyAvailabilityManager } from "@/components/WeeklyAvailabilityManager"
 import { OneTimeUnavailabilityManager } from "@/components/OneTimeUnavailabilityManager"
-import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import { InfoTooltip } from "@/components/ui/info-tooltip"
 import toast, { Toaster } from "react-hot-toast"
 import { getMyWeeklyAvailability, getUserUnavailability } from "@/features/availability/api/availabilityApi"
@@ -23,29 +22,18 @@ interface AvailabilityDraft {
 
 const EMPTY_DRAFT: AvailabilityDraft = { weekly: [], oneTime: [] }
 
-const ROLE_TAB_OPTIONS: { value: AvailabilityRole; label: string }[] = [
-  { value: "TEACHER", label: "Availability as Teacher" },
-  { value: "STUDENT", label: "Availability as Student" },
-]
-
 const AVAILABILITY_TOOLTIP =
   "Configure the hours when you are available to teach, and separately configure when you can attend classes as a student."
 
 export default function ProfilePage() {
-  const { user, refreshUser, isDualRole, isTeacher: hasTeacherRole, isStudent: hasStudentRole } = useAuth()
+  const { user, refreshUser, isDualRole, activeRole } = useAuth()
 
   // ─── Availability state (one draft per role so grids never overwrite each other) ──
   // Single-role users always use their own role; legacy sessions fall back to user.role
-  const defaultAvailabilityRole: AvailabilityRole =
-    hasStudentRole && !hasTeacherRole
-      ? "STUDENT"
-      : hasTeacherRole
-        ? "TEACHER"
-        : user?.role === UserRole.STUDENT
-          ? "STUDENT"
-          : "TEACHER"
-  const [roleTab, setRoleTab] = useState<AvailabilityRole>("TEACHER")
-  const availabilityRole: AvailabilityRole = isDualRole ? roleTab : defaultAvailabilityRole
+  const defaultAvailabilityRole: AvailabilityRole = user?.role === UserRole.STUDENT ? "STUDENT" : "TEACHER"
+  const availabilityRole: AvailabilityRole = activeRole ?? defaultAvailabilityRole
+  const isStudent = activeRole === "STUDENT"
+  const isTeacher = activeRole === "TEACHER"
 
   const [drafts, setDrafts] = useState<Record<AvailabilityRole, AvailabilityDraft>>({
     TEACHER: EMPTY_DRAFT,
@@ -60,6 +48,12 @@ export default function ProfilePage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const loadedAvailability = useRef<{ userId: number; roles: Set<AvailabilityRole> } | null>(null)
+  const draftUserId = useRef<number | null>(null)
+  const [readyRoles, setReadyRoles] = useState<Record<AvailabilityRole, boolean>>({ TEACHER: false, STUDENT: false })
+  const [availabilityLoadError, setAvailabilityLoadError] = useState<string | null>(null)
+  const [availabilityRetry, setAvailabilityRetry] = useState(0)
+  const availabilityReady = !isDualRole || readyRoles[availabilityRole]
 
   // ─── Collapse state ────────────────────────────────────────────────────────
   const [isWeeklyOpen, setIsWeeklyOpen] = useState(true)
@@ -75,6 +69,7 @@ export default function ProfilePage() {
 
   // ─── Desired lessons per week ──────────────────────────────────────────────
   const [desiredLessonsPerWeek, setDesiredLessonsPerWeek] = useState<string>("")
+  const desiredDrafts = useRef<Partial<Record<AvailabilityRole, string>>>({})
   const [loadedStudentProfile, setLoadedStudentProfile] = useState<StudentResponse | null>(null)
   const [loadedTeacherProfile, setLoadedTeacherProfile] = useState<TeacherResponse | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
@@ -97,6 +92,10 @@ export default function ProfilePage() {
   // The user payload contains entries of BOTH roles, so always filter by availabilityRole.
   useEffect(() => {
     if (!user) return
+    if (draftUserId.current === user.id) return
+    draftUserId.current = user.id
+    desiredDrafts.current = {}
+    setReadyRoles({ TEACHER: false, STUDENT: false })
     const byRole = <T extends { availabilityRole?: AvailabilityRole }>(
       items: T[] | undefined,
       role: AvailabilityRole,
@@ -114,92 +113,109 @@ export default function ProfilePage() {
     })
   }, [user, defaultAvailabilityRole])
 
-  // Dual-role users: refetch the grid of the active tab from the role-aware endpoints
+  // Load each role once so switching roles preserves unsaved drafts.
   const userId = user?.id
   useEffect(() => {
     if (userId === undefined || !isDualRole) return
+    if (loadedAvailability.current?.userId !== userId) {
+      loadedAvailability.current = { userId, roles: new Set() }
+    }
+    if (loadedAvailability.current.roles.has(availabilityRole)) return
     let aborted = false
-    Promise.all([getMyWeeklyAvailability(roleTab), getUserUnavailability(userId, roleTab)])
+    setAvailabilityLoadError(null)
+    Promise.all([getMyWeeklyAvailability(availabilityRole), getUserUnavailability(userId, availabilityRole)])
       .then(([weekly, oneTime]) => {
         if (aborted) return
+        loadedAvailability.current?.roles.add(availabilityRole)
+        setReadyRoles((prev) => ({ ...prev, [availabilityRole]: true }))
         setDrafts((prev) => ({
           ...prev,
-          [roleTab]: {
+          [availabilityRole]: {
             weekly,
             oneTime: oneTime.map((o) => ({ ...o, reason: o.reason ?? undefined })),
           },
         }))
       })
-      .catch(() => {
-        // Keep the data derived from the /me payload
+      .catch((err: unknown) => {
+        if (!aborted) setAvailabilityLoadError(err instanceof Error ? err.message : "Failed to load availability.")
       })
     return () => {
       aborted = true
     }
-  }, [userId, isDualRole, roleTab])
+  }, [userId, isDualRole, availabilityRole, availabilityRetry])
 
   // Load role-specific data
   useEffect(() => {
     if (!user) return
+    let aborted = false
 
     setPreferenceError(null)
     setIsLoadingPreferences(true)
 
-    // Dual-role users load both the student part and the teacher part
-    const loadAsStudent = user.role === UserRole.STUDENT || (hasStudentRole && user.role !== UserRole.ADMIN)
-    const loadAsTeacher = user.role === UserRole.TEACHER || (hasTeacherRole && user.role !== UserRole.ADMIN)
-
     const tasks: Promise<void>[] = []
-    if (loadAsStudent) {
+    if (isStudent) {
       tasks.push(
         Promise.all([teacherService.getAllTeachers(), userService.getPreferredTeachers()]).then(
           ([teachers, preferred]) => {
             // A dual-role user must not pick themselves as a private-lesson teacher
-            setAllTeachers(teachers.filter((t) => t.id !== user.id))
-            setPreferredTeacherIds(new Set(preferred.map((t) => t.id)))
+            if (!aborted) {
+              setAllTeachers(teachers.filter((t) => t.id !== user.id))
+              setPreferredTeacherIds(new Set(preferred.map((t) => t.id)))
+            }
           },
         ),
       )
     }
-    if (loadAsTeacher) {
-      tasks.push(teacherService.getMyPrivateStudents().then(setPrivateStudents))
+    if (isTeacher) {
+      tasks.push(teacherService.getMyPrivateStudents().then((students) => {
+        if (!aborted) setPrivateStudents(students)
+      }))
     }
 
     Promise.all(tasks)
-      .catch((err) => setPreferenceError(err instanceof Error ? err.message : "Failed to load data."))
-      .finally(() => setIsLoadingPreferences(false))
-  }, [user, hasStudentRole, hasTeacherRole])
+      .catch((err) => { if (!aborted) setPreferenceError(err instanceof Error ? err.message : "Failed to load data.") })
+      .finally(() => { if (!aborted) setIsLoadingPreferences(false) })
+    return () => { aborted = true }
+  }, [user, isStudent, isTeacher])
 
   // Load desiredLessonsPerWeek from profile endpoint
   useEffect(() => {
     if (!user) return
-    if (user.role !== UserRole.STUDENT && user.role !== UserRole.TEACHER) return
+    if (!isStudent && !isTeacher) return
+    let aborted = false
 
     setProfileLoading(true)
     setProfileError(null)
+    setProfileSuccess(false)
+    setLoadedStudentProfile(null)
+    setLoadedTeacherProfile(null)
+    setDesiredLessonsPerWeek("")
 
-    if (user.role === UserRole.STUDENT) {
+    if (isStudent) {
       userService.getStudentProfile()
         .then((profile) => {
+          if (aborted) return
           setLoadedStudentProfile(profile)
           setDesiredLessonsPerWeek(
-            profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : ""
+            desiredDrafts.current.STUDENT ?? (profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : "")
           )
         })
-        .catch((err) => setProfileError(err instanceof Error ? err.message : "Failed to load profile."))
-        .finally(() => setProfileLoading(false))
+        .catch((err) => { if (!aborted) setProfileError(err instanceof Error ? err.message : "Failed to load profile.") })
+        .finally(() => { if (!aborted) setProfileLoading(false) })
     } else {
       teacherService.getMyTeacherProfile()
         .then((profile) => {
+          if (aborted) return
           setLoadedTeacherProfile(profile)
           setDesiredLessonsPerWeek(
-            profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : ""
+            desiredDrafts.current.TEACHER ?? (profile.desiredLessonsPerWeek != null ? String(profile.desiredLessonsPerWeek) : "")
           )
         })
-        .catch((err) => setProfileError(err instanceof Error ? err.message : "Failed to load profile."))
-        .finally(() => setProfileLoading(false))
+        .catch((err) => { if (!aborted) setProfileError(err instanceof Error ? err.message : "Failed to load profile.") })
+        .finally(() => { if (!aborted) setProfileLoading(false) })
     }
-  }, [user])
+    return () => { aborted = true }
+  }, [user, isStudent, isTeacher])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -258,9 +274,6 @@ export default function ProfilePage() {
     }
   }
 
-  const isStudent = user?.role === UserRole.STUDENT
-  const isTeacher = user?.role === UserRole.TEACHER
-
   const handleSaveProfile = async () => {
     if (!user) return
 
@@ -295,6 +308,7 @@ export default function ProfilePage() {
         setProfileError("Profile data is still loading. Please wait and try again.")
         return
       }
+      if (activeRole) delete desiredDrafts.current[activeRole]
       setProfileSuccess(true)
       setTimeout(() => setProfileSuccess(false), 3000)
     } catch (err) {
@@ -401,6 +415,7 @@ export default function ProfilePage() {
                         value={desiredLessonsPerWeek}
                         onChange={(e) => {
                           setDesiredLessonsPerWeek(e.target.value)
+                          if (activeRole) desiredDrafts.current[activeRole] = e.target.value
                           setProfileError(null)
                         }}
                         className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -441,15 +456,21 @@ export default function ProfilePage() {
           {isDualRole && <InfoTooltip text={AVAILABILITY_TOOLTIP} />}
         </div>
 
-        {isDualRole && (
-          <SegmentedTabs
-            aria-label="Availability role"
-            options={ROLE_TAB_OPTIONS}
-            value={roleTab}
-            onChange={setRoleTab}
-          />
+        {!availabilityReady && (
+          <div className="rounded-lg border border-slate-700 bg-slate-800 p-4 text-sm text-slate-300" role="status">
+            {availabilityLoadError ? (
+              <>
+                <p className="text-red-400">{availabilityLoadError}</p>
+                <Button variant="outline" size="sm" className="mt-2" onClick={() => setAvailabilityRetry((value) => value + 1)}>
+                  Retry
+                </Button>
+              </>
+            ) : "Loading availability…"}
+          </div>
         )}
 
+        {availabilityReady && (
+        <>
         {/* Weekly availability card */}
         <Card className="bg-slate-900/80 border-slate-800">
           {/* Clickable header */}
@@ -574,8 +595,11 @@ export default function ProfilePage() {
           </div>
         </Card>
 
+        </>
+        )}
+
         {/* ── STUDENT: Preferred Teachers for Private Lessons ────────────── */}
-        {(isStudent || (hasStudentRole && user?.role !== UserRole.ADMIN)) && (
+        {isStudent && (
           <section className="space-y-4">
             <h2 className="text-2xl font-bold text-white">Private Lesson Preferences</h2>
             <p className="text-slate-400 text-sm">
@@ -670,7 +694,7 @@ export default function ProfilePage() {
         )}
 
         {/* ── TEACHER: My Private Lesson Students ───────────────────────── */}
-        {(isTeacher || (hasTeacherRole && user?.role !== UserRole.ADMIN)) && (
+        {isTeacher && (
           <section className="space-y-4">
             <h2 className="text-2xl font-bold text-white">My Private Lesson Students</h2>
             <p className="text-slate-400 text-sm">
@@ -744,7 +768,7 @@ export default function ProfilePage() {
     </div>
 
     {/* ── Student Availability Modal ──────────────────────────────────────── */}
-    {availabilityModalStudent && (
+    {isTeacher && availabilityModalStudent && (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
         onClick={() => setAvailabilityModalStudent(null)}
@@ -855,4 +879,3 @@ export default function ProfilePage() {
     </>
   )
 }
-

@@ -13,6 +13,8 @@ import type { DanceStyleDTO, TeacherResponse } from "@/types/teacher"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
+import type { AvailabilityRole } from "@/types/enums"
 import {
   Dialog,
   DialogContent,
@@ -63,24 +65,15 @@ function getInitials(fullName: string): string {
 }
 
 export default function Layout() {
-  const { isAuthenticated, user, logout, refreshUser, isTeacher, isStudent, isDualRole } = useAuth()
+  const { isAuthenticated, user, logout, refreshUser, isDualRole, activeRole, setActiveRole } = useAuth()
 
   const isAdmin = user?.role === UserRole.ADMIN
-  const showTeacher = !isAdmin && (isTeacher || user?.role === UserRole.TEACHER)
-  const showStudent = !isAdmin && (isStudent || user?.role === UserRole.STUDENT || (!showTeacher && !!user))
+  const showTeacher = !isAdmin && activeRole === "TEACHER"
+  const showStudent = !isAdmin && (activeRole === "STUDENT" || (!activeRole && !!user))
 
-  // Merge role-specific links; dual-role users get a deduplicated set
-  const roleNav: NavItem[] = (() => {
-    if (isAdmin) return [{ to: "/profile", label: "Profile", icon: User }]
-    const merged = new Map<string, NavItem>()
-    if (showTeacher) TEACHER_NAV.forEach((item) => merged.set(item.to, item))
-    if (showStudent) {
-      STUDENT_NAV.forEach((item) => {
-        if (!merged.has(item.to)) merged.set(item.to, item)
-      })
-    }
-    return Array.from(merged.values())
-  })()
+  const roleNav: NavItem[] = isAdmin
+    ? [{ to: "/profile", label: "Profile", icon: User }]
+    : showTeacher ? TEACHER_NAV : STUDENT_NAV
 
   const roleBadges: string[] = isAdmin
     ? ["🛡️ Administrator"]
@@ -112,7 +105,7 @@ export default function Layout() {
   }
 
   useEffect(() => {
-    if (!isTeacherEditOpen || user?.role !== UserRole.TEACHER) return
+    if (!isTeacherEditOpen || !showTeacher) return
 
     let cancelled = false
 
@@ -148,7 +141,7 @@ export default function Layout() {
     return () => {
       cancelled = true
     }
-  }, [isTeacherEditOpen, user?.role])
+  }, [isTeacherEditOpen, showTeacher])
 
   const toggleStyle = (styleId: number) => {
     setSelectedStyleIds((prev) => (
@@ -190,14 +183,30 @@ export default function Layout() {
   return (
     <main className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col">
       <header className="py-4 px-6 border-b border-slate-800 bg-transparent">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <Link to="/" className="text-white font-bold text-lg">
             Timetable
           </Link>
 
+          {isAuthenticated && isDualRole && activeRole && (
+            <SegmentedTabs<AvailabilityRole>
+              aria-label="Active role"
+              options={[
+                { value: "TEACHER", label: "Teacher" },
+                { value: "STUDENT", label: "Student" },
+              ]}
+              value={activeRole}
+              onChange={(role) => {
+                setIsTeacherEditOpen(false)
+                setActiveRole(role)
+              }}
+              className="order-last w-full justify-center sm:order-none sm:w-auto"
+            />
+          )}
+
           {/* Nav trigger */}
           <div className="flex items-center gap-3">
-            {isAuthenticated && user && (
+            {isAuthenticated && user && !isDualRole && (
               <div
                 className={cn(
                   "hidden md:flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/60 p-0.5",
@@ -290,7 +299,7 @@ export default function Layout() {
                               <span className="font-mono text-xs">{user.id}</span>
                             </div>
 
-                            {user.role === UserRole.TEACHER && (
+                            {showTeacher && (
                               <Button
                                 type="button"
                                 variant="outline"

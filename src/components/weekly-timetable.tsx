@@ -118,7 +118,7 @@ interface WeeklyTimetableProps {
 }
 
 export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
-  const { user } = useAuth()
+  const { user, isDualRole } = useAuth()
   const navigate = useNavigate()
   const isTeacher = viewAs ? viewAs === "teacher" : user?.role === UserRole.TEACHER
   const isStudent = viewAs ? viewAs === "student" : user?.role === UserRole.STUDENT
@@ -135,10 +135,12 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
   const [activeSchedule, setActiveSchedule] = useState<ScheduleMetadataDTO | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [groupError, setGroupError] = useState<string | null>(null)
   // Tracks whether any schedules exist at all (vs. none for the selected week)
   const [hasAnySchedules, setHasAnySchedules] = useState(true)
   // For STUDENT role: set of group IDs the student is enrolled in (stable, fetched once)
   const [myGroupIds, setMyGroupIds] = useState<Set<number> | null>(null)
+  const isTimetableLoading = isLoading || (isStudent && myGroupIds === null && !groupError)
 
   // ── Cancellation state ────────────────────────────────────────────────────────
   const [cancelDialogEvent, setCancelDialogEvent] = useState<ScheduledEvent | null>(null)
@@ -149,12 +151,18 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
   // Fetch student's enrolled groups once on mount
   useEffect(() => {
     if (!isStudent) return
-    groupsApi.getMy().then((groups) => {
-      setMyGroupIds(new Set(groups.map((g) => g.id)))
-    }).catch(() => {
-      setMyGroupIds(new Set())
+    let cancelled = false
+    const request = isDualRole ? groupsApi.getAll() : groupsApi.getMy()
+    request.then((groups) => {
+      if (!cancelled) {
+        const enrolled = isDualRole ? groups.filter((group) => group.enrolledByCurrentUser) : groups
+        setMyGroupIds(new Set(enrolled.map((g) => g.id)))
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) setGroupError(err instanceof Error ? err.message : "Failed to load your groups")
     })
-  }, [isStudent])
+    return () => { cancelled = true }
+  }, [isStudent, isDualRole])
 
   useEffect(() => {
     let cancelled = false
@@ -224,14 +232,14 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
 
     // STUDENT: show private lessons where they are the student,
     //          AND group lessons where they are enrolled in the group.
-    if (isStudent && myGroupIds !== null) {
+    if (isStudent) {
       return base.filter((e) => {
         if (e.isPrivate) {
           // private-matched → student ID must match current user
           return e.studentId === user?.id
         }
         // group lesson → student must be enrolled in this group
-        return e.groupId !== null && e.groupId !== undefined && myGroupIds.has(e.groupId)
+        return e.groupId !== null && e.groupId !== undefined && (myGroupIds?.has(e.groupId) ?? false)
       })
     }
 
@@ -432,19 +440,19 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
           </div>
         </div>
 
-        {isLoading && (
+        {isTimetableLoading && (
             <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground text-center">
               Loading timetable...
             </div>
         )}
 
-        {!isLoading && error && (
+        {!isTimetableLoading && (error || groupError) && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-              {error}
+              {error || groupError}
             </div>
         )}
 
-        {!isLoading && !error && filteredEvents.length === 0 && (
+        {!isTimetableLoading && !error && !groupError && filteredEvents.length === 0 && (
             <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
               {hasAnySchedules
                 ? "No classes planned for this week."
@@ -453,7 +461,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
         )}
 
         {/* Mobile View */}
-        <div className={`block ${mobileOnly ? '' : 'lg:hidden'} ${isLoading || error ? 'hidden' : ''}`}>
+        <div className={`block ${mobileOnly ? '' : 'lg:hidden'} ${isTimetableLoading || error || groupError ? 'hidden' : ''}`}>
           <div className="space-y-4">
             {DAYS.map((day, dayIndex) => {
               const dayEvents = getEventsForDay(dayIndex)
@@ -483,7 +491,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
 
         {/* DESKTOP: TABLE (new view - sections) */}
         {viewMode === "table" && (
-            <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
+            <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isTimetableLoading || error || groupError ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
               <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
                 <table className="w-full text-sm border-collapse min-w-[1000px]">
                   <thead>
@@ -547,7 +555,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
 
         {/* DESKTOP: CLASSIC VIEW (original background and absolute positioning) */}
         {viewMode === "classic" && (
-            <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isLoading || error ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
+            <div className={`hidden ${mobileOnly ? 'hidden' : 'lg:block'} overflow-x-auto ${isTimetableLoading || error || groupError ? 'hidden' : ''} pb-6 fade-in-0 animate-in`}>
               <div className="min-w-[1000px] border border-border/50 rounded-lg overflow-hidden bg-background">
 
                 {/* Header: empty corner on the left, weekdays on top */}

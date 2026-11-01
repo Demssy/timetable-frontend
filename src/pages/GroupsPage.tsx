@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { groupsApi } from "@/api/groupsApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserRole } from "@/types/enums";
@@ -132,14 +132,15 @@ function GroupCard({
 type Tab = "all" | "my";
 
 export default function GroupsPage() {
-  const { user } = useAuth();
-  const isStudent = user?.role === UserRole.STUDENT;
+  const { user, activeRole, isDualRole } = useAuth();
+  const isStudent = activeRole === "STUDENT";
 
   const [tab, setTab] = useState<Tab>("all");
   const [groups, setGroups] = useState<DanceGroupDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enrollingId, setEnrollingId] = useState<number | null>(null);
+  const requestId = useRef(0);
 
   // Details dialog state
   const [detailsGroup, setDetailsGroup] = useState<DanceGroupDetails | null>(null);
@@ -148,20 +149,29 @@ export default function GroupsPage() {
   const [studentsError, setStudentsError] = useState<string | null>(null);
 
   const fetchGroups = useCallback(async (t: Tab) => {
+    const request = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
-      const data = t === "all" ? await groupsApi.getAll() : await groupsApi.getMy();
-      setGroups(data);
+      const data = t === "all" || (isDualRole && isStudent)
+        ? await groupsApi.getAll()
+        : await groupsApi.getMy();
+      if (request === requestId.current) {
+        setGroups(t === "my" && isDualRole && isStudent
+          ? data.filter((group) => group.enrolledByCurrentUser)
+          : data);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load groups");
+      if (request === requestId.current) setError(e instanceof Error ? e.message : "Failed to load groups");
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
-  }, []);
+  }, [isDualRole, isStudent]);
 
   useEffect(() => {
+    const tracker = requestId;
     fetchGroups(tab);
+    return () => { tracker.current++; };
   }, [tab, fetchGroups]);
 
   const handleToggleEnroll = async (id: number, enrolled: boolean) => {
@@ -194,7 +204,7 @@ export default function GroupsPage() {
 
   const emptyMessage = () => {
     if (tab === "all") return "No groups found.";
-    switch (user?.role) {
+    switch (activeRole ?? user?.role) {
       case UserRole.STUDENT:
         return "You are not enrolled in any groups yet. Browse All Groups to sign up!";
       case UserRole.TEACHER:
@@ -296,4 +306,3 @@ export default function GroupsPage() {
     </div>
   );
 }
-

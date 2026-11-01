@@ -37,11 +37,15 @@ Users sign in or register through the public `/login` and `/signup` pages. `Auth
 
 Protected routes require an authenticated user. Administrator routes are additionally wrapped by `AdminRoute`. The application supports `STUDENT`, `TEACHER`, and `ADMIN` roles, including accounts with both teacher and student roles.
 
+Dual-role users can switch between Teacher and Student in the header. Navigation, the timetable, groups, lesson preferences, and availability follow the selected view. The selection applies to the current session in the frontend and does not change backend permissions; it defaults to Teacher after signing in or reloading.
+
 ### 3.2 Weekly timetable and lesson operations
 
 `src/components/weekly-timetable.tsx` presents a responsive weekly timetable. Users can move between weeks, jump to the current week, choose a week by date, and switch between table and classic grid views on desktop. Lesson cards show the teacher, room, day, time, and relevant group or student information. The administrator view can filter by teacher; teacher and student views are scoped to the current user's lessons or enrolled groups.
 
 Administrators can open the schedule editor and use `AddManualLessonModal.tsx` to add a private lesson by choosing a teacher and student for a timeslot. Authorized teachers and administrators can cancel lessons, optionally provide a reason, and administrators can restore cancelled lessons. **Room and dance style are shown in lesson information where available; the current weekly timetable does not provide room or dance-style filter controls.**
+
+On the administrator Lessons page, private lesson templates are grouped by teacher in collapsed, expandable clusters. Group lessons remain individual rows, and the teacher and lesson-type filters apply to both views.
 
 ### 3.3 Schedule generation and post-generation analysis
 
@@ -58,13 +62,13 @@ These reports explain the returned solver result; the backend remains responsibl
 
 ### 3.4 Availability management
 
-The availability feature under `src/features/availability/` provides a weekly time-grid for viewing and editing availability slots. The administrator availability view can select a user, add, edit, and delete slots, and display weekly totals and metrics. For dual-role users, role tabs separate **As Teacher** and **As Student** availability.
+The availability feature under `src/features/availability/` provides a weekly time-grid for viewing and editing availability slots. The administrator availability view can select a user, add, edit, and delete slots, and display weekly totals and metrics. In their own profile, dual-role users edit availability for the role selected in the header.
 
 `OneTimeUnavailabilityManager.tsx` supports date-specific exceptions with start and end times and an optional reason. Availability data is submitted through the availability API and is distinct from recurring weekly slots.
 
 ### 3.5 Dual-role accounts and registration
 
-`MySchedulePage.tsx` supports role-aware lesson views. A dual-role user can switch between **I teach**, **I learn**, and **Everything**; the combined view labels lessons by role. The page also displays cancellation status and availability-related empty states.
+`MySchedulePage.tsx` shows lessons for the active role selected in the header. The page also displays cancellation status and availability-related empty states.
 
 `SignUpForm.tsx` adapts its fields to the selected student or teacher registration mode. Teacher registration includes teaching details and an optional **also attend classes as a student** choice, which reveals student preference fields and enables dual-role registration.
 

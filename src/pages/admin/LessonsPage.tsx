@@ -24,6 +24,17 @@ type LessonType = "group" | "private"
 type ModalMode = "create" | "edit" | null
 type FilterType = "all" | "group" | "private"
 
+interface PrivateLessonCluster {
+  key: string
+  teacherName: string
+  teacherColor: string | null
+  lessons: ScheduledLessonDTO[]
+}
+
+type LessonRow =
+  | { type: "group"; lesson: ScheduledLessonDTO }
+  | { type: "private"; cluster: PrivateLessonCluster }
+
 interface GroupFormState {
   teacherId: number | ""
   danceGroupId: number | ""
@@ -103,6 +114,7 @@ export function LessonsPage() {
 
   const [filterType, setFilterType] = useState<FilterType>("all")
   const [filterTeacherId, setFilterTeacherId] = useState<number | "all">("all")
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set())
 
   /** Unique teachers present in the loaded lessons list (for the filter dropdown). */
   const teachersInLessons = useMemo(() => {
@@ -135,6 +147,41 @@ export function LessonsPage() {
       return nameCmp !== 0 ? nameCmp : a.id - b.id
     })
   }, [lessons, filterType, filterTeacherId])
+
+  const displayedRows = useMemo(() => {
+    const rows: LessonRow[] = []
+    const clusters = new Map<string, PrivateLessonCluster>()
+    for (const lesson of displayedLessons) {
+      if (lesson.danceGroup) {
+        rows.push({ type: "group", lesson })
+        continue
+      }
+
+      const key = lesson.teacher.id >= 0 ? `teacher-${lesson.teacher.id}` : `lesson-${lesson.id}`
+      let cluster = clusters.get(key)
+      if (!cluster) {
+        cluster = {
+          key,
+          teacherName: lesson.teacher.fullName,
+          teacherColor: lesson.teacher.colorCode,
+          lessons: [],
+        }
+        clusters.set(key, cluster)
+        rows.push({ type: "private", cluster })
+      }
+      cluster.lessons.push(lesson)
+    }
+    return rows
+  }, [displayedLessons])
+
+  const toggleCluster = (key: string) => {
+    setExpandedClusters((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   /** Per-tab counts for the filter toolbar. */
   const counts = useMemo(() => ({
@@ -318,6 +365,70 @@ export function LessonsPage() {
       ? lesson.student?.fullName ?? "Open Slot"
       : lesson.danceGroup?.name ?? "Unknown Group"
 
+  const renderLesson = (lesson: ScheduledLessonDTO) => {
+    const teacherColor = lesson.teacher?.colorCode
+    const groupLevel = lesson.danceGroup?.danceLevel
+
+    return (
+      <tr key={lesson.id} className="border-b transition-colors hover:bg-muted/50">
+        <td className="p-3 text-muted-foreground">{lesson.id}</td>
+        <td className="p-3 font-medium">
+          {!lesson.danceGroup
+            ? <Badge variant="secondary">Private Slot</Badge>
+            : <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/20 text-sky-400 px-2 py-0.5 text-xs font-semibold"><Users className="h-3 w-3" />Group</span>
+          }
+        </td>
+        <td className="p-3">
+          <span className="font-medium" style={teacherColor ? { color: teacherColor } : undefined}>
+            {lesson.teacher?.fullName ?? "Unknown"}
+          </span>
+        </td>
+        <td className="p-3 font-medium">
+          {!lesson.danceGroup && !lesson.student ? (
+            <span className="text-muted-foreground italic">Open slot (solver will assign)</span>
+          ) : (
+            lessonSubject(lesson)
+          )}
+        </td>
+        <td className="p-3">
+          {groupLevel ? (
+            <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", LEVEL_COLORS[groupLevel] ?? "bg-muted text-muted-foreground")}>
+              {groupLevel}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </td>
+        <td className="p-3">{lesson.durationMinutes}m</td>
+        <td className="p-3">
+          <div className="flex gap-1">
+            {lesson.isPinned && <span title="Pinned — solver won't move" className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.5 text-xs font-semibold"><Pin className="h-3 w-3" />Pinned</span>}
+          </div>
+        </td>
+        <td className="p-3 font-mono text-xs text-muted-foreground">
+          {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : <span className="text-muted-foreground italic font-sans">Awaiting schedule</span>}
+        </td>
+        <td className="p-3 text-muted-foreground">{lesson.room?.name ?? <span className="italic">Awaiting schedule</span>}</td>
+        <td className="p-3">
+          <div className="flex items-center justify-center">
+            <Checkbox
+              checked={lesson.isActive}
+              disabled={togglingIds.has(lesson.id)}
+              onCheckedChange={() => handleToggleActive(lesson.id)}
+              aria-label={`Toggle lesson ${lesson.id} active`}
+            />
+          </div>
+        </td>
+        <td className="p-3 text-right">
+          <div className="flex justify-end gap-1">
+            <Button variant="ghost" size="sm" onClick={() => openEdit(lesson)}><Pencil className="h-3.5 w-3.5 mr-1" />Edit</Button>
+            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(lesson)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -412,67 +523,33 @@ export function LessonsPage() {
                   <tr><td colSpan={11} className="h-24 text-center text-muted-foreground">
                     {lessons.length === 0 ? "No lessons found." : "No lessons match the current filter."}
                   </td></tr>
-                ) : displayedLessons.map((lesson) => {
-                  const teacherColor = lesson.teacher?.colorCode
-                  const groupLevel = lesson.danceGroup?.danceLevel
-
+                ) : displayedRows.map((row) => {
+                  if (row.type === "group") return renderLesson(row.lesson)
+                  const { cluster } = row
+                  const expanded = expandedClusters.has(cluster.key)
                   return (
-                    <tr key={lesson.id} className="border-b transition-colors hover:bg-muted/50">
-                      <td className="p-3 text-muted-foreground">{lesson.id}</td>
-                      <td className="p-3 font-medium">
-                        {!lesson.danceGroup
-                          ? <Badge variant="secondary">Private Slot</Badge>
-                          : <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/20 text-sky-400 px-2 py-0.5 text-xs font-semibold"><Users className="h-3 w-3" />Group</span>
-                        }
-                      </td>
-                      <td className="p-3">
-                        <span className="font-medium" style={teacherColor ? { color: teacherColor } : undefined}>
-                          {lesson.teacher?.fullName ?? "Unknown"}
-                        </span>
-                      </td>
-                      <td className="p-3 font-medium">
-                        {!lesson.danceGroup && !lesson.student ? (
-                          <span className="text-muted-foreground italic">Open slot (solver will assign)</span>
-                        ) : (
-                          lessonSubject(lesson)
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {groupLevel ? (
-                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold", LEVEL_COLORS[groupLevel] ?? "bg-muted text-muted-foreground")}>
-                            {groupLevel}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="p-3">{lesson.durationMinutes}m</td>
-                      <td className="p-3">
-                        <div className="flex gap-1">
-                          {lesson.isPinned && <span title="Pinned — solver won't move" className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.5 text-xs font-semibold"><Pin className="h-3 w-3" />Pinned</span>}
-                        </div>
-                      </td>
-                      <td className="p-3 font-mono text-xs text-muted-foreground">
-                        {lesson.timeslot ? `${lesson.timeslot.dayOfWeek} ${fmtTime(lesson.timeslot.startTime)}` : <span className="text-muted-foreground italic font-sans">Awaiting schedule</span>}
-                      </td>
-                      <td className="p-3 text-muted-foreground">{lesson.room?.name ?? <span className="italic">Awaiting schedule</span>}</td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-center">
-                          <Checkbox
-                            checked={lesson.isActive}
-                            disabled={togglingIds.has(lesson.id)}
-                            onCheckedChange={() => handleToggleActive(lesson.id)}
-                            aria-label={`Toggle lesson ${lesson.id} active`}
-                          />
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(lesson)}><Pencil className="h-3.5 w-3.5 mr-1" />Edit</Button>
-                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(lesson)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={cluster.key}>
+                      <tr className="border-b bg-muted/30">
+                        <th colSpan={11} className="p-0 text-left font-normal">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            onClick={() => toggleCluster(cluster.key)}
+                            className="flex w-full items-center gap-2 px-3 py-3 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform", expanded && "rotate-90")} />
+                            <UserIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="font-semibold" style={cluster.teacherColor ? { color: cluster.teacherColor } : undefined}>
+                              {cluster.teacherName}
+                            </span>
+                            <span className="text-muted-foreground">
+                              · {cluster.lessons.length} private {cluster.lessons.length === 1 ? "template" : "templates"}
+                            </span>
+                          </button>
+                        </th>
+                      </tr>
+                      {expanded && cluster.lessons.map(renderLesson)}
+                    </React.Fragment>
                   )
                 })}
               </tbody>

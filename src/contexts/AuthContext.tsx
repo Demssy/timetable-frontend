@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { authService } from "@/services/authService"
 import type { User, LoginRequest, RegisterRequest } from "@/types/user"
+import { UserRole, type AvailabilityRole } from "@/types/enums"
 
 
 interface AuthContextType {
@@ -10,6 +11,8 @@ interface AuthContextType {
   isTeacher: boolean
   isStudent: boolean
   isDualRole: boolean
+  activeRole: AvailabilityRole | null
+  setActiveRole: (role: AvailabilityRole) => void
   login: (credentials: LoginRequest) => Promise<void>
   register: (data: RegisterRequest) => Promise<void>
   logout: () => Promise<void>
@@ -30,6 +33,7 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [roleSelection, setRoleSelection] = useState<{ userId: number; role: AvailabilityRole } | null>(null)
 
 
 
@@ -62,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (credentials: LoginRequest) => {
     try {
       const loggedInUser  = await authService.login(credentials)
+      setRoleSelection(null)
       setUser(await loadFullUser(loggedInUser))
 
     } catch (error) {
@@ -73,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: RegisterRequest) => {
     try {
       const registeredUser = await authService.register(data)
+      setRoleSelection(null)
       setUser(await loadFullUser(registeredUser))
     } catch (error) {
       console.error("Registration failed:", error)
@@ -83,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async (): Promise<void> => {
     await authService.logout()
     setUser(null)
+    setRoleSelection(null)
   }
 
   const refreshUser = async () => {
@@ -96,9 +103,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // Null-safe: roles may be missing for stale sessions
-  const isTeacher = user?.roles?.includes("ROLE_TEACHER") ?? false
-  const isStudent = user?.roles?.includes("ROLE_STUDENT") ?? false
-  const isDualRole = isTeacher && isStudent
+  const isTeacher = (user?.roles?.includes("ROLE_TEACHER") ?? false) || user?.role === UserRole.TEACHER
+  const isStudent = (user?.roles?.includes("ROLE_STUDENT") ?? false) || user?.role === UserRole.STUDENT
+  const isDualRole = user?.role !== UserRole.ADMIN && isTeacher && isStudent
+  const activeRole: AvailabilityRole | null = !user || user.role === UserRole.ADMIN
+    ? null
+    : isDualRole && roleSelection?.userId === user.id
+      ? roleSelection.role
+      : isTeacher ? "TEACHER" : isStudent ? "STUDENT" : null
+  const setActiveRole = (role: AvailabilityRole) => {
+    if (user && isDualRole) setRoleSelection({ userId: user.id, role })
+  }
 
   const value: AuthContextType = {
     user,
@@ -107,6 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isTeacher,
     isStudent,
     isDualRole,
+    activeRole,
+    setActiveRole,
     login,
     register,
     logout,
@@ -115,4 +132,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
-

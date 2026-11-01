@@ -6,20 +6,12 @@ import type { DayOfWeek as DayOfWeekType } from "@/types/enums"
 import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import { cn } from "@/lib/utils"
 import { Clock, CalendarClock } from "lucide-react"
 import { EmptyState } from "@/components/EmptyState"
 import { getMyWeeklyAvailability } from "@/features/availability/api/availabilityApi"
 
 type LessonRole = "TEACHER" | "STUDENT"
-type ViewMode = LessonRole | "ALL"
-
-const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
-  { value: "TEACHER", label: "I teach" },
-  { value: "STUDENT", label: "I learn" },
-  { value: "ALL", label: "Everything" },
-]
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -141,8 +133,6 @@ interface LessonCardProps {
   onCancel: (lesson: ScheduledLessonDTO) => void
   onRestore: (lesson: ScheduledLessonDTO) => void
   actionLoadingId: number | null
-  /** Show Teaching/Attending badge (combined view only) */
-  roleBadge?: LessonRole | null
 }
 
 function LessonCard({
@@ -153,7 +143,6 @@ function LessonCard({
   onCancel,
   onRestore,
   actionLoadingId,
-  roleBadge,
 }: LessonCardProps) {
   const { timeslot, teacher, danceGroup, student, isPrivate, isCancelled, cancelledAt, cancelReason } = lesson
 
@@ -180,17 +169,6 @@ function LessonCard({
         isCancelled && "opacity-50",
       )}
     >
-      {roleBadge && (
-        <span
-          className={cn(
-            "mr-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold text-white",
-            roleBadge === "TEACHER" ? "bg-green-600" : "bg-blue-600",
-          )}
-        >
-          {roleBadge === "TEACHER" ? "Teaching" : "Attending"}
-        </span>
-      )}
-
       {isCancelled && (
         <span className="inline-block rounded-full bg-red-700 px-2 py-0.5 text-xs font-semibold text-white">
           Cancelled
@@ -244,72 +222,30 @@ function LessonCard({
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export function MySchedulePage() {
-  const { user, isTeacher: hasTeacherRole, isDualRole } = useAuth()
+  const { user, activeRole, isDualRole } = useAuth()
   const [lessons, setLessons] = useState<ScheduledLessonDTO[]>([])
-  // Maps lesson id -> role under which the lesson was loaded
-  const [lessonRoles, setLessonRoles] = useState<Record<number, LessonRole>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>("ALL")
 
   const [cancelTarget, setCancelTarget] = useState<ScheduledLessonDTO | null>(null)
   const [cancelActionLoading, setCancelActionLoading] = useState(false)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [showCancelled, setShowCancelled] = useState(true)
 
-  // Legacy single-role detection (works for stale sessions without `roles`)
-  const isTeacher = hasTeacherRole || user?.role === UserRole.TEACHER
+  const isTeacher = activeRole === "TEACHER"
   const isAdmin = user?.role === UserRole.ADMIN
-  const singleRole: LessonRole = isTeacher ? "TEACHER" : "STUDENT"
+  const scheduleRole: LessonRole = isTeacher ? "TEACHER" : "STUDENT"
 
   useEffect(() => {
     let aborted = false
     setIsLoading(true)
     setError(null)
 
-    const load = async (): Promise<{ lessons: ScheduledLessonDTO[]; roles: Record<number, LessonRole> }> => {
-      // Single-role users: legacy call without `role`
-      if (!isDualRole) {
-        const data = await lessonApi.getMySchedule()
-        return { lessons: data, roles: Object.fromEntries(data.map((l) => [l.id, singleRole])) }
-      }
-
-      if (viewMode === "ALL") {
-        // No combined endpoint: load both roles in parallel and tag client-side.
-        // allSettled keeps one role's lessons visible even if the other request fails.
-        const [teachingRes, attendingRes] = await Promise.allSettled([
-          lessonApi.getMySchedule("TEACHER"),
-          lessonApi.getMySchedule("STUDENT"),
-        ])
-        if (teachingRes.status === "rejected" && attendingRes.status === "rejected") {
-          throw teachingRes.reason
-        }
-        const teaching = teachingRes.status === "fulfilled" ? teachingRes.value : []
-        const attending = attendingRes.status === "fulfilled" ? attendingRes.value : []
-        const roles: Record<number, LessonRole> = {}
-        const merged: ScheduledLessonDTO[] = []
-        for (const l of teaching) {
-          roles[l.id] = "TEACHER"
-          merged.push(l)
-        }
-        for (const l of attending) {
-          // Same lesson in both lists is shown once as Teaching
-          if (roles[l.id]) continue
-          roles[l.id] = "STUDENT"
-          merged.push(l)
-        }
-        return { lessons: merged, roles }
-      }
-
-      const data = await lessonApi.getMySchedule(viewMode)
-      return { lessons: data, roles: Object.fromEntries(data.map((l) => [l.id, viewMode])) }
-    }
-
-    load()
+    setCancelTarget(null)
+    lessonApi.getMySchedule(isDualRole ? scheduleRole : undefined)
       .then((result) => {
         if (aborted) return
-        setLessons(result.lessons)
-        setLessonRoles(result.roles)
+        setLessons(result)
       })
       .catch((err: unknown) => {
         if (!aborted) setError(err instanceof Error ? err.message : "Failed to load schedule")
@@ -321,7 +257,7 @@ export function MySchedulePage() {
     return () => {
       aborted = true
     }
-  }, [isDualRole, viewMode, singleRole])
+  }, [isDualRole, scheduleRole, user?.id])
 
   // Check availability only when the schedule is empty (null = unknown yet)
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null)
@@ -329,14 +265,14 @@ export function MySchedulePage() {
   useEffect(() => {
     if (!isScheduleEmpty) return
     let aborted = false
-    const role: LessonRole = isDualRole && viewMode !== "ALL" ? viewMode : singleRole
-    getMyWeeklyAvailability(role)
+    setHasAvailability(null)
+    getMyWeeklyAvailability(scheduleRole)
       .then((slots) => !aborted && setHasAvailability(slots.length > 0))
       .catch(() => !aborted && setHasAvailability(null))
     return () => {
       aborted = true
     }
-  }, [isScheduleEmpty, isDualRole, viewMode, singleRole])
+  }, [isScheduleEmpty, scheduleRole])
 
   const handleConfirmCancel = useCallback(
     async (reason: string) => {
@@ -405,15 +341,6 @@ export function MySchedulePage() {
         )}
       </div>
 
-      {isDualRole && (
-        <SegmentedTabs
-          aria-label="Schedule view"
-          options={VIEW_OPTIONS}
-          value={viewMode}
-          onChange={setViewMode}
-        />
-      )}
-
       {isLoading && (
         <div className="flex items-center justify-center py-20">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-indigo-500" />
@@ -464,10 +391,9 @@ export function MySchedulePage() {
                       <LessonCard
                         key={lesson.id}
                         lesson={lesson}
-                        isTeacher={isTeacher && lessonRoles[lesson.id] === "TEACHER"}
+                        isTeacher={isTeacher}
                         isAdmin={isAdmin}
                         currentUserId={user?.id}
-                        roleBadge={isDualRole && viewMode === "ALL" ? lessonRoles[lesson.id] : null}
                         onCancel={setCancelTarget}
                         onRestore={handleRestore}
                         actionLoadingId={
