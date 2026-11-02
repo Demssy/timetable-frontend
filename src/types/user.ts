@@ -101,6 +101,8 @@ export interface RegisterRequest {
   qualifiedStyleIds?: number[]
   /** Short biography / teaching experience */
   bio?: string | null
+  /** Teacher's color in the timetable, hex like #3498DB */
+  colorCode?: string
 
   // ── Teacher who is also a student ─────────────────────────────────────────
   /** True when a teacher also registers as a student (role stays TEACHER) */

@@ -44,6 +44,7 @@ export function SignupForm() {
   // ── teacher-specific ──────────────────────────────────────────────────────
   const [phone, setPhone] = useState("")
   const [bio, setBio] = useState("")
+  const [colorCode, setColorCode] = useState("#3498DB")
   const [specialization, setSpecialization] = useState<number[]>([])
   const [availableStyles, setAvailableStyles] = useState<DanceStyleDTO[]>([])
   const [isLoadingStyles, setIsLoadingStyles] = useState(false)
@@ -154,6 +155,7 @@ export function SignupForm() {
           phone: phone || null,
           qualifiedStyleIds: specialization,
           bio: bio || null,
+          colorCode,
           alsoStudent,
           // student profile fields are sent only when the checkbox is checked
           ...(alsoStudent && {
@@ -350,7 +352,21 @@ export function SignupForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="bio" className="text-slate-300">
+                  <Label htmlFor="colorCode" className="text-slate-300">Your color in the timetable</Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="colorCode"
+                      type="color"
+                      value={colorCode}
+                      onChange={e => setColorCode(e.target.value.toUpperCase())}
+                      className="h-9 w-14 cursor-pointer rounded-md border border-slate-700 bg-slate-800 p-1"
+                    />
+                    <span className="font-mono text-sm text-slate-400">{colorCode}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bio"  className="text-slate-300">
                     Bio / Teaching experience <span className="text-slate-500 text-xs">(optional)</span>
                   </Label>
                   <textarea
