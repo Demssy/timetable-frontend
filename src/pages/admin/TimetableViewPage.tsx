@@ -77,11 +77,11 @@ function getLessonSubject(lesson: ScheduledLessonDTO): string {
 function getScoreStatusClass(hardScore: number | undefined): string {
   return hardScore !== undefined && hardScore < 0
     ? "bg-red-500/15 text-red-400 border-red-500/30"
-    : "bg-green-500/15 text-green-400 border-green-500/30"
+    : "bg-slate-500/15 text-slate-300 border-slate-500/30"
 }
 
 function getScoreStatusIcon(hardScore: number | undefined): string {
-  return hardScore !== undefined && hardScore < 0 ? "❌" : "✅"
+  return hardScore !== undefined && hardScore < 0 ? "⚠" : "•"
 }
 
 const makeDropId = (id: number) => `drop-ts-${id}`
@@ -358,7 +358,7 @@ export function TimetableViewPage() {
   const [schedule, setSchedule]   = useState<ScheduleMetadataDTO|null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError]         = useState<string|null>(null)
-  const { status, startPolling, stopPolling } = useSolverPolling(scheduleId)
+  const { status, error: solverStatusError, startPolling, stopPolling } = useSolverPolling(scheduleId)
   const isSolving = status===SolverStatus.SOLVING_ACTIVE || status===SolverStatus.SOLVING_SCHEDULED
 
   const [isEditing, setIsEditing]           = useState(false)
@@ -382,6 +382,14 @@ export function TimetableViewPage() {
 
   const sensors = useSensors(useSensor(PointerSensor,{ activationConstraint:{ distance:5 } }))
 
+  useEffect(() => {
+    if (isSolving || schedule?.status === ScheduleStatus.ARCHIVED) {
+      setIsEditing(false)
+      setIsDeleteMode(false)
+      setManualTimeslotId(null)
+    }
+  }, [isSolving, schedule?.status])
+
   const fetchSolution = useCallback(async () => {
     if (!scheduleId) return
     try { const d=await solverApi.getSolution(scheduleId); setSolution(d) }
@@ -398,6 +406,7 @@ export function TimetableViewPage() {
   const fetchReports = useCallback(async () => {
     if (!scheduleId) return
     setIsLoadingReports(true); setExplanationError(null); setUnmetError(null)
+    setScoreExplanation(null); setUnmetStudents(null)
     const [er, ur] = await Promise.allSettled([
       solverApi.getScoreExplanation(scheduleId),
       solverApi.getUnmetStudents(scheduleId),
@@ -411,14 +420,23 @@ export function TimetableViewPage() {
 
   useEffect(() => {
     const prev = prevStatusRef.current; prevStatusRef.current = status
-    if (prev!==null && prev!==SolverStatus.NOT_SOLVING && status===SolverStatus.NOT_SOLVING) fetchReports()
-  },[status, fetchReports])
+    if (status===SolverStatus.NOT_SOLVING &&
+      (prev===null || prev!==SolverStatus.NOT_SOLVING)) {
+      void Promise.all([fetchSchedule(), fetchSolution(), fetchReports()])
+      setIsEditing(false)
+      setIsDeleteMode(false)
+    }
+  },[status, fetchSchedule, fetchSolution, fetchReports])
 
   useEffect(() => {
-    fetchSolution(); fetchSchedule(); startPolling()
+    fetchSolution(); fetchSchedule(); fetchReports(); startPolling()
     return () => { stopPolling() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[])
+
+  const refreshAfterMutation = useCallback(async () => {
+    await Promise.all([fetchSchedule(), fetchSolution(), fetchReports()])
+  }, [fetchSchedule, fetchSolution, fetchReports])
 
   useEffect(() => {
     let t: ReturnType<typeof setInterval>|undefined
@@ -427,22 +445,24 @@ export function TimetableViewPage() {
   },[isSolving, fetchSolution])
 
   const handleEditToggle = useCallback(async () => {
+    if (schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     if (!isEditing) {
       try { setAllTimeslots(await timeslotApi.getAll()) }
       catch(e) { console.error("Failed to load timeslots:",e); return }
     }
     if (isEditing) setIsDeleteMode(false)
     setIsEditing(p=>!p)
-  },[isEditing])
+  },[isEditing, schedule?.status, isSolving])
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
+    if (schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     setActiveLesson((e.active.data.current?.lesson as ScheduledLessonDTO|undefined) ?? null)
-  },[])
+  },[isSolving, schedule?.status])
 
   const handleDragEnd = useCallback(async (e: DragEndEvent) => {
     setActiveLesson(null)
     const { active, over } = e
-    if (!over) return
+    if (!over || schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     const lesson = active.data.current?.lesson as ScheduledLessonDTO|undefined
     if (!lesson) return
     const tsId = parseTsId(over.id as string)
@@ -451,53 +471,60 @@ export function TimetableViewPage() {
     if (!ts) return
     setMovingLessonId(lesson.id)
     try {
-      await lessonApi.update(lesson.id,{
-        teacherId:lesson.teacher.id, danceGroupId:lesson.danceGroup?.id??null,
-        studentId:lesson.student?.id??null, durationMinutes:lesson.durationMinutes,
-        isPrivate:lesson.isPrivate, isPinned:lesson.isPinned, isActive:lesson.isActive,
-        timeslotId:ts.id, roomId:lesson.room?.id??null,
+      if (lesson.isPinned) return
+      await lessonApi.update(lesson.id, {
+        teacherId: lesson.teacher.id,
+        danceGroupId: lesson.danceGroup?.id ?? null,
+        studentId: lesson.student?.id ?? null,
+        durationMinutes: lesson.durationMinutes,
+        isPrivate: lesson.isPrivate,
+        isPinned: lesson.isPinned,
+        isActive: lesson.isActive,
+        timeslotId: ts.id,
+        roomId: lesson.room?.id ?? null,
       })
-      await fetchSolution()
-    } catch(err) { console.error("Failed to move lesson:",err) }
+      await refreshAfterMutation()
+    } catch(err) {
+      setActionError(err instanceof Error ? err.message : "Failed to move lesson.")
+      await refreshAfterMutation()
+    }
     finally { setMovingLessonId(null) }
-  },[allTimeslots, fetchSolution])
+  },[allTimeslots, isSolving, refreshAfterMutation, schedule?.status])
 
   const handleDragCancel = useCallback(()=>setActiveLesson(null),[])
 
   const handleAddLesson = useCallback((timeslotId: number) => {
+    if (schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     setActionError(null)
     setManualTimeslotId(timeslotId)
-  }, [])
+  }, [isSolving, schedule?.status])
 
   const handleCreateManualLesson = useCallback(async ({ teacherId, studentId, timeslotId, isPinned }: ManualLessonData) => {
+    if (!scheduleId || schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     const timeslot = allTimeslots.find(item => item.id === timeslotId)
     if (!timeslot) return
 
     setIsCreatingLesson(true)
     setActionError(null)
     try {
-      const created = await lessonApi.create({
+      await lessonApi.create({
         scheduleId,
         teacherId, studentId, danceGroupId: null,
         durationMinutes: toMinutes(timeslot.endTime) - toMinutes(timeslot.startTime),
         isPrivate: true, isPinned, isActive: true, timeslotId, roomId: null,
       })
-      const lesson = { ...created, isPrivate: true, isPinned, timeslot: created.timeslot ?? timeslot }
-      setSolution(previous => previous && {
-        ...previous,
-        fullyAssigned: previous.fullyAssigned && lesson.room !== null,
-        lessons: [...previous.lessons, lesson],
-      })
+      await refreshAfterMutation()
       setManualTimeslotId(null)
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : "Failed to add manual lesson.")
+      await refreshAfterMutation()
     } finally {
       setIsCreatingLesson(false)
     }
-  }, [allTimeslots, scheduleId])
+  }, [allTimeslots, isSolving, refreshAfterMutation, schedule?.status, scheduleId])
 
   const handleSaveSchedule = useCallback(async () => {
-    if (!scheduleId || !schedule) return
+    if (!scheduleId || !schedule || schedule.status === ScheduleStatus.ARCHIVED || isSolving) return
     setIsSavingSchedule(true)
     setActionError(null)
     try {
@@ -505,20 +532,23 @@ export function TimetableViewPage() {
         ? await scheduleApi.saveAndRepublish(scheduleId)
         : await scheduleApi.save(scheduleId)
       setSchedule(updated)
-      await fetchSolution()
+      await refreshAfterMutation()
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : "Failed to save schedule.")
+      await refreshAfterMutation()
     } finally {
       setIsSavingSchedule(false)
     }
-  }, [fetchSolution, schedule, scheduleId])
+  }, [isSolving, refreshAfterMutation, schedule, scheduleId])
 
   const handleToggleDeleteMode = useCallback(() => {
+    if (schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     setActionError(null)
     setIsDeleteMode(previous => !previous)
-  }, [])
+  }, [isSolving, schedule?.status])
 
   const handleDeleteLesson = useCallback(async (lesson: ScheduledLessonDTO) => {
+    if (!scheduleId || schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
     if (deletingLessonIds.has(lesson.id)) return
     const confirmed = window.confirm(`Delete lesson "${getLessonSubject(lesson)}"?`)
     if (!confirmed) return
@@ -528,18 +558,10 @@ export function TimetableViewPage() {
     try {
 
       await deleteScheduledLesson(lesson.id)
-
-      setSolution(previous => {
-        if (!previous) return previous
-        const remaining = previous.lessons.filter(item => item.id !== lesson.id)
-        return {
-          ...previous,
-          fullyAssigned: remaining.every(item => item.timeslot !== null && item.room !== null),
-          lessons: remaining,
-        }
-      })
+      await refreshAfterMutation()
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : "Failed to delete lesson.")
+      await refreshAfterMutation()
     } finally {
       setDeletingLessonIds(previous => {
         const next = new Set(previous)
@@ -547,7 +569,7 @@ export function TimetableViewPage() {
         return next
       })
     }
-  }, [deletingLessonIds])
+  }, [deletingLessonIds, isSolving, refreshAfterMutation, schedule?.status, scheduleId])
 
   if (isLoading) return (
     <div className="container mx-auto py-10 flex items-center justify-center gap-3 text-muted-foreground">
@@ -569,7 +591,6 @@ export function TimetableViewPage() {
     groupLessons:solution.lessons.filter(l=>!l.isPrivate).length,
     privateMatched:solution.lessons.filter(l=>l.isPrivate&&l.student!=null).length,
     privateAvailable:solution.lessons.filter(l=>l.isPrivate&&l.student==null).length,
-    hardScore:solution.hardScore, softScore:solution.softScore,
   }
 
   const gridDays       = DAY_ORDER
@@ -665,22 +686,28 @@ export function TimetableViewPage() {
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
+        {schedule && (
+          <span className="rounded-full border border-slate-600 px-3 py-1 text-xs font-semibold text-slate-300">
+            {schedule.status}
+          </span>
+        )}
+        {solverStatusError && <span role="status" className="text-xs text-amber-400">{solverStatusError} — retrying…</span>}
         {isSolving && (
           <div className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400">
             <Loader2 className="h-4 w-4 animate-spin" />
             {status===SolverStatus.SOLVING_SCHEDULED ? "Solving scheduled…" : "Solving in progress…"}
           </div>
         )}
-        {solution.score && (
+        {parsedScore ? (
           <div className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium border",
-            getScoreStatusClass(parsedScore?.hard))}>
-            {getScoreStatusIcon(parsedScore?.hard)}
-            <span>Score: {parsedScore ? `${parsedScore.hard} hard / ${parsedScore.soft} soft` : solution.score}</span>
-            {parsedScore&&parsedScore.hard<0 && <span className="text-red-300">(Hard constraint violated!)</span>}
-            {parsedScore&&parsedScore.hard===0&&parsedScore.soft<0 && <span className="text-yellow-400">({Math.abs(parsedScore.soft)} soft penalties)</span>}
+            getScoreStatusClass(parsedScore.hard))}>
+            {getScoreStatusIcon(parsedScore.hard)}
+            <span>Score: {`${parsedScore.hard} hard / ${parsedScore.soft} soft`}</span>
+            {parsedScore.hard<0 && <span className="text-red-300">(Hard constraint violations reported)</span>}
+            {parsedScore.hard===0&&parsedScore.soft<0 && <span className="text-yellow-400">({Math.abs(parsedScore.soft)} soft penalties)</span>}
           </div>
-        )}
-        {!solution.fullyAssigned && (
+        ) : <span className="text-sm text-slate-400">No saved solver score is available.</span>}
+        {solution.lessons.length > 0 && !solution.fullyAssigned && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400">
             <AlertTriangle className="h-4 w-4" /> Not all lessons could be assigned
           </div>
@@ -695,16 +722,24 @@ export function TimetableViewPage() {
         <div className={cn("rounded-lg border p-3 text-center",stats.privateAvailable>0?"border-amber-700/50 bg-amber-900/20":"border-slate-700 bg-slate-800/50")}>
           <p className={cn("text-2xl font-bold",stats.privateAvailable>0?"text-amber-400":"text-slate-400")}>{stats.privateAvailable}</p><p className="text-xs text-muted-foreground mt-0.5">Available Slots</p>
         </div>
-        <div className={cn("rounded-lg border p-3 text-center",stats.hardScore<0?"border-red-700/50 bg-red-900/20":"border-green-700/50 bg-green-900/20")}>
-          <p className={cn("text-2xl font-bold",stats.hardScore<0?"text-red-400":"text-green-400")}>{stats.hardScore}</p><p className="text-xs text-muted-foreground mt-0.5">Hard Violations</p>
-        </div>
-        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center"><p className="text-2xl font-bold text-yellow-400">{stats.softScore}</p><p className="text-xs text-muted-foreground mt-0.5">Quality Score</p></div>
+        {parsedScore ? (
+          <>
+            <div className={cn("rounded-lg border p-3 text-center",parsedScore.hard<0?"border-red-700/50 bg-red-900/20":"border-green-700/50 bg-green-900/20")}>
+              <p className={cn("text-2xl font-bold",parsedScore.hard<0?"text-red-400":"text-green-400")}>{parsedScore.hard}</p><p className="text-xs text-muted-foreground mt-0.5">Hard Score</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center"><p className="text-2xl font-bold text-yellow-400">{parsedScore.soft}</p><p className="text-xs text-muted-foreground mt-0.5">Soft Score</p></div>
+          </>
+        ) : (
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-center text-xs text-muted-foreground">
+            No saved score available
+          </div>
+        )}
       </div>
 
       {/* Post-solve report panels */}
-      {!isSolving && solution.lessons.length>0 && (
+      {!isSolving && (
         <div className="space-y-3">
-          <ScoreExplanationPanel scheduleId={scheduleId} hardScore={stats.hardScore}
+          <ScoreExplanationPanel scheduleId={scheduleId} hardScore={parsedScore?.hard ?? null}
             explanation={scoreExplanation} isLoading={isLoadingReports}
             error={explanationError} onRequestLoad={fetchReports} />
 
@@ -726,7 +761,7 @@ export function TimetableViewPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {!isSolving && solution.lessons.length>0 && (
+        {!isSolving && solution.lessons.length>0 && schedule?.status !== ScheduleStatus.ARCHIVED && (
           <Button type="button" variant={isEditing?"destructive":"outline"} size="sm" onClick={handleEditToggle} className="gap-1.5">
             {isEditing ? <><X className="h-4 w-4" /> Exit Edit</> : <><Pencil className="h-4 w-4" /> Edit</>}
           </Button>
@@ -744,7 +779,7 @@ export function TimetableViewPage() {
           </Button>
         )}
         {isEditing && schedule && (
-          <Button type="button" size="sm" onClick={handleSaveSchedule} disabled={isSavingSchedule} className="gap-1.5">
+          <Button type="button" size="sm" onClick={handleSaveSchedule} disabled={isSavingSchedule || isSolving || schedule.status === ScheduleStatus.ARCHIVED} className="gap-1.5">
             {isSavingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {isSavingSchedule ? "Saving…" : schedule.status === ScheduleStatus.PUBLISHED ? "Save and Republish" : "Save"}
           </Button>

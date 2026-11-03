@@ -35,7 +35,7 @@ export const scheduleApi = {
 
   /** PATCH /api/admin/schedules/{id}/draft → reverts back to DRAFT */
   revertToDraft: (id: number) =>
-    apiFetch<ScheduleMetadataDTO>(`${BASE}/${id}/draft`, { method: "PATCH" }),
+    apiFetch<ScheduleMetadataDTO>(`${ADMIN_BASE}/${id}/draft`, { method: "PATCH" }),
 
   /** PATCH /api/admin/schedules/{id}/save → persists manual timetable edits. */
   save: (id: number) =>

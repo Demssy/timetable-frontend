@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { ChevronRight, ChevronLeft, Plus, Trash2, FolderOpen, Globe, CalendarRange, Archive, FileText, ChevronDown } from "lucide-react"
 import { format, addDays, addWeeks, startOfWeek, endOfWeek } from "date-fns"
 import { scheduleApi } from "@/api/scheduleApi"
+import { ApiError } from "@/api/client"
 import type { ScheduleMetadataDTO, CreateScheduleRequest } from "@/types/schedule"
 import { ScheduleStatus } from "@/types/schedule"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -70,6 +71,8 @@ function StatusDropdown({
         variant="ghost"
         size="sm"
         disabled={loading}
+        aria-label="Change schedule status"
+        aria-expanded={open}
         onClick={() => setOpen(prev => !prev)}
         className="text-slate-300 hover:text-white gap-1 px-2"
         title="Change status"
@@ -78,9 +81,14 @@ function StatusDropdown({
       </Button>
       {open && (
         <div className="absolute right-0 top-8 z-40 w-36 rounded-lg border border-white/10 bg-slate-900 shadow-xl overflow-hidden">
-          {STATUS_OPTIONS.filter(o => o.value !== current).map(opt => (
+          {STATUS_OPTIONS.filter(o => {
+            if (current === ScheduleStatus.DRAFT) return o.value !== current
+            if (current === ScheduleStatus.PUBLISHED) return o.value !== ScheduleStatus.PUBLISHED
+            return o.value === ScheduleStatus.DRAFT
+          }).map(opt => (
             <button
               key={opt.value}
+              type="button"
               onClick={() => { onSelect(opt.value); setOpen(false) }}
               className={cn(
                 "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
@@ -126,9 +134,11 @@ export function SchedulesPage() {
     setIsLoading(true); setError(null); setConflictSchedule(null)
     try {
       // Use admin endpoint to get ALL schedules (including DRAFT and ARCHIVED)
-      setSchedules(sortSchedules(await scheduleApi.adminGetAll()))
+      const currentSchedules = sortSchedules(await scheduleApi.adminGetAll())
+      setSchedules(currentSchedules)
+      return currentSchedules
     }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load schedules") }
+    catch (err) { setError(err instanceof Error ? err.message : "Failed to load schedules"); return null }
     finally { setIsLoading(false) }
   }
 
@@ -150,6 +160,7 @@ export function SchedulesPage() {
       setForm({ name: "" })
       navigate(`/admin/schedules/${created.id}`)
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) await fetchSchedules()
       setFormError(err instanceof Error ? err.message : "Failed to create")
     } finally { setIsSaving(false) }
   }
@@ -166,17 +177,19 @@ export function SchedulesPage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete") }
   }
 
-  /** Quick-archive the conflicting published schedule directly from the error banner. */
+  /** Offer an explicit archive action after a publication conflict response. */
   const handleQuickArchive = async (s: ScheduleMetadataDTO) => {
     if (!window.confirm(`Archive "${s.name}"? After that you'll be able to publish the new schedule.`)) return
     setChangingStatusId(s.id)
     try {
-      const updated = await scheduleApi.archive(s.id)
-      setSchedules(prev => sortSchedules(prev.map(item => (item.id === updated.id ? updated : item))))
+      await scheduleApi.archive(s.id)
+      await fetchSchedules()
       setError(null)
       setConflictSchedule(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to archive")
+      const message = err instanceof Error ? err.message : "Failed to archive"
+      await fetchSchedules()
+      setError(message)
     } finally {
       setChangingStatusId(null)
     }
@@ -196,36 +209,36 @@ export function SchedulesPage() {
     setChangingStatusId(s.id)
     setError(null)
     try {
-      let updated: ScheduleMetadataDTO
       if (newStatus === ScheduleStatus.PUBLISHED) {
-        updated = await scheduleApi.publish(s.id)
+        await scheduleApi.publish(s.id)
       } else if (newStatus === ScheduleStatus.ARCHIVED) {
-        updated = await scheduleApi.archive(s.id)
+        await scheduleApi.archive(s.id)
       } else {
-        updated = await scheduleApi.revertToDraft(s.id)
+        await scheduleApi.revertToDraft(s.id)
       }
-      setSchedules(prev => sortSchedules(prev.map(item => (item.id === updated.id ? updated : item))))
+      await fetchSchedules()
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : "Failed to change status"
 
       if (newStatus === ScheduleStatus.PUBLISHED) {
+        const latestSchedules = await fetchSchedules()
+        const latestTarget = latestSchedules?.find(sc => sc.id === s.id) ?? s
         // Find any PUBLISHED schedule whose dates overlap with the one being published
-        const conflict = schedules.find(sc =>
-          sc.id !== s.id &&
+        const conflict = latestSchedules?.find(sc =>
+          sc.id !== latestTarget.id &&
           sc.status === ScheduleStatus.PUBLISHED &&
-          sc.validFrom <= s.validTo &&
-          sc.validTo >= s.validFrom
+          sc.validFrom <= latestTarget.validTo &&
+          sc.validTo >= latestTarget.validFrom
         )
-        if (conflict) {
+        if (conflict && err instanceof ApiError && err.status === 409) {
           setConflictSchedule(conflict)
-          setError(
-            `Cannot publish "${s.name}": schedule "${conflict.name}" (${conflict.validFrom} — ${conflict.validTo}) is already published for an overlapping week. Archive it first.`
-          )
+          setError(`Cannot publish "${latestTarget.name}": ${rawMsg}`)
         } else {
           setConflictSchedule(null)
-          setError(`Cannot publish "${s.name}": ${rawMsg}. Make sure no other schedule is published for the same week — archive it first.`)
+          setError(`Cannot publish "${latestTarget.name}": ${rawMsg}`)
         }
       } else {
+        await fetchSchedules()
         setConflictSchedule(null)
         setError(rawMsg)
       }
@@ -265,7 +278,7 @@ export function SchedulesPage() {
           {conflictSchedule && (
             <div className="flex items-center gap-3 pt-1">
               <span className="text-xs text-destructive/80">
-                Conflicting schedule: <strong>"{conflictSchedule.name}"</strong> ({conflictSchedule.validFrom} — {conflictSchedule.validTo})
+                Potentially overlapping published schedule: <strong>"{conflictSchedule.name}"</strong> ({conflictSchedule.validFrom} — {conflictSchedule.validTo})
               </span>
               <Button
                 size="sm"

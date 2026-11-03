@@ -5,7 +5,6 @@ import {
   RefreshCw, CheckCircle2, AlertTriangle, Loader2, Sparkles,
 } from "lucide-react"
 import { solverApi } from "@/api/solverApi"
-import { lessonApi } from "@/api/lessonApi"
 import { scheduleApi } from "@/api/scheduleApi"
 import { useSolverPolling } from "@/hooks/useSolverPolling"
 import { SolverStatus } from "@/types/enums"
@@ -28,7 +27,7 @@ function parseScore(score: string | null): { hard: number; soft: number } | null
 function getSolutionCardClassName(hasSolution: boolean, hardScore: number | undefined): string {
   if (!hasSolution) return "border-slate-700/50 opacity-70"
   if (hardScore !== undefined && hardScore < 0) return "border-red-500/40 bg-red-500/5"
-  return "border-green-500/40 bg-green-500/5"
+  return "border-slate-700 bg-slate-900/50"
 }
 
 // ─── Solver status badge ───────────────────────────────────────────────────────
@@ -42,10 +41,11 @@ function SolverStatusBadge({ status }: { readonly status: string | null }) {
       </span>
     )
   }
+  const label = status === SolverStatus.SOLVING_SCHEDULED ? "Scheduled" : "Solving…"
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/20 px-3 py-1 text-sm font-medium text-blue-400">
       <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-      Solving…
+      {label}
     </span>
   )
 }
@@ -60,10 +60,6 @@ export function ScheduleDetailPage() {
   // Schedule metadata (name, status)
   const [schedule, setSchedule] = useState<ScheduleMetadataDTO | null>(null)
 
-  // Raw lesson list (baseline before a solution exists)
-  const [lessons, setLessons] = useState<ScheduledLessonDTO[]>([])
-  const [isLoadingLessons, setIsLoadingLessons] = useState(true)
-
   // Solution data (populated after solving)
   const [solution, setSolution] = useState<ScheduleSolutionResponse | null>(null)
   const [isLoadingSolution, setIsLoadingSolution] = useState(true)
@@ -71,9 +67,12 @@ export function ScheduleDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
   const [wasSolving, setWasSolving] = useState(false)
+  const [isStartingSolver, setIsStartingSolver] = useState(false)
+  const [isStoppingSolver, setIsStoppingSolver] = useState(false)
+  const [solverFinished, setSolverFinished] = useState(false)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { status, isPolling, startPolling, stopPolling } = useSolverPolling(scheduleId)
+  const { status, isPolling, error: statusError, startPolling } = useSolverPolling(scheduleId)
 
   const isSolving = status === SolverStatus.SOLVING_ACTIVE || status === SolverStatus.SOLVING_SCHEDULED
   const hasSolution = solution !== null && !!solution.lessons.length
@@ -81,13 +80,14 @@ export function ScheduleDetailPage() {
   // This runs synchronously before any fetch, so the user never sees ghost data.
   useEffect(() => {
     setSchedule(null)
-    setLessons([])
     setSolution(null)
     setError(null)
     setSolveError(null)
-    setIsLoadingLessons(true)
     setIsLoadingSolution(true)
     setWasSolving(false)
+    setIsStartingSolver(false)
+    setIsStoppingSolver(false)
+    setSolverFinished(false)
     // Clear any active polling interval from the previous schedule
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current)
@@ -106,14 +106,6 @@ export function ScheduleDetailPage() {
     }
   }, [scheduleId])
 
-  // ── Fetch raw lesson list (schedule-agnostic baseline) ─────────────────────
-  const fetchLessons = useCallback(async () => {
-    setIsLoadingLessons(true)
-    try { setLessons(await lessonApi.getAll()) }
-    catch { /* non-critical */ }
-    finally { setIsLoadingLessons(false) }
-  }, [])
-
   // ── Fetch solver solution (assignment data + score) ────────────────────────
   const fetchSolution = useCallback(async () => {
     if (!scheduleId) return
@@ -131,9 +123,8 @@ export function ScheduleDetailPage() {
   // Initial load — triggers whenever scheduleId changes (i.e. new fetch callbacks created)
   useEffect(() => {
     fetchSchedule()
-    fetchLessons()
     fetchSolution()
-  }, [fetchSchedule, fetchLessons, fetchSolution])
+  }, [fetchSchedule, fetchSolution])
 
   // Poll solution data while solver is running (live counter updates)
   useEffect(() => {
@@ -143,27 +134,33 @@ export function ScheduleDetailPage() {
     return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }
   }, [isSolving, fetchSolution])
 
+  useEffect(() => {
+    if (isSolving) setWasSolving(true)
+  }, [isSolving])
+
   // When solver finishes → refresh everything
   useEffect(() => {
     if (wasSolving && status === SolverStatus.NOT_SOLVING && !isPolling) {
-      fetchSolution()
-      fetchLessons()
+      void Promise.all([fetchSchedule(), fetchSolution()])
+      setSolverFinished(true)
       setWasSolving(false)
     }
-  }, [status, isPolling, wasSolving, fetchSolution, fetchLessons])
+  }, [status, isPolling, wasSolving, fetchSchedule, fetchSolution])
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleStartSolving = async () => {
-    if (!scheduleId) return
+    if (!scheduleId || schedule?.status !== "DRAFT" || isSolving || isStartingSolver) return
     setSolveError(null)
+    setSolverFinished(false)
+    setIsStartingSolver(true)
     try {
       await solverApi.solve(scheduleId)
       setWasSolving(true)
       startPolling()
     } catch (err) {
       setSolveError(err instanceof Error ? err.message : "Failed to start solver")
-    }
+    } finally { setIsStartingSolver(false) }
   }
 
   const handleRegenerate = async () => {
@@ -172,13 +169,15 @@ export function ScheduleDetailPage() {
   }
 
   const handleStop = async () => {
-    if (!scheduleId) return
-    try { await solverApi.stop(scheduleId); stopPolling() }
+    if (!scheduleId || !isSolving || isStoppingSolver) return
+    setIsStoppingSolver(true)
+    try { await solverApi.stop(scheduleId) }
     catch (err) { setSolveError(err instanceof Error ? err.message : "Failed to stop solver") }
+    finally { setIsStoppingSolver(false) }
   }
 
   // ── Derived stats ──────────────────────────────────────────────────────────
-  const displayLessons: ScheduledLessonDTO[] = solution?.lessons ?? lessons
+  const displayLessons: ScheduledLessonDTO[] = solution?.lessons ?? []
   const assignedCount   = displayLessons.filter(l => l.timeslot !== null && l.room !== null).length
   const unassignedCount = displayLessons.length - assignedCount
   const pinnedCount     = displayLessons.filter(l => l.isPinned).length
@@ -188,7 +187,7 @@ export function ScheduleDetailPage() {
   const parsedScore     = parseScore(solution?.score ?? null)
 
   // ── Loading / error screens ────────────────────────────────────────────────
-  const isInitialLoading = isLoadingLessons && isLoadingSolution && !schedule
+  const isInitialLoading = isLoadingSolution && !schedule
 
   if (isInitialLoading) {
     return (
@@ -243,6 +242,9 @@ export function ScheduleDetailPage() {
               {schedule.validFrom} → {schedule.validTo}
             </p>
           )}
+          {solution?.score === "N/A" && (
+            <span className="text-xs text-slate-400">No saved solver score is available.</span>
+          )}
         </div>
       </div>
 
@@ -256,10 +258,18 @@ export function ScheduleDetailPage() {
           {solveError && (
             <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">{solveError}</div>
           )}
+          {solverFinished && (
+            <p className="text-sm text-slate-400" role="status">
+              Solver is no longer running. The displayed snapshots and score are the current server state; result application is not separately confirmed.
+            </p>
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Status:</span>
             <SolverStatusBadge status={status} />
+            {statusError && (
+              <span role="status" className="text-xs text-amber-400">{statusError} — retrying…</span>
+            )}
             {isSolving && isLoadingSolution && (
               <Loader2 className="h-3.5 w-3.5 text-slate-500 animate-spin ml-1" />
             )}
@@ -267,15 +277,15 @@ export function ScheduleDetailPage() {
 
           <div className="flex gap-3 flex-wrap">
             {!isSolving && !hasSolution && (
-              <Button type="button" onClick={handleStartSolving} className="bg-green-600 hover:bg-green-700">
-                <Play className="h-4 w-4 mr-2" />Start Solving
+              <Button type="button" onClick={handleStartSolving} disabled={schedule?.status !== "DRAFT" || status === null || isStartingSolver} className="bg-green-600 hover:bg-green-700">
+                {isStartingSolver ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}{isStartingSolver ? "Starting…" : "Start Solving"}
               </Button>
             )}
 
             {!isSolving && hasSolution && (
               <>
-                <Button type="button" onClick={handleRegenerate} className="bg-green-600 hover:bg-green-700">
-                  <RefreshCw className="h-4 w-4 mr-2" />Re-generate
+                <Button type="button" onClick={handleRegenerate} disabled={schedule?.status !== "DRAFT" || status === null || isStartingSolver} className="bg-green-600 hover:bg-green-700">
+                  {isStartingSolver ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}{isStartingSolver ? "Starting…" : "Re-generate"}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => navigate(`/admin/schedules/${id}/timetable`)}>
                   <LayoutGrid className="h-4 w-4 mr-2" />View Timetable
@@ -285,8 +295,8 @@ export function ScheduleDetailPage() {
 
             {isSolving && (
               <>
-                <Button type="button" variant="destructive" onClick={handleStop}>
-                  <Square className="h-4 w-4 mr-2" />Stop
+                <Button type="button" variant="destructive" onClick={handleStop} disabled={isStoppingSolver}>
+                  {isStoppingSolver ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Square className="h-4 w-4 mr-2" />}{isStoppingSolver ? "Stopping…" : "Stop"}
                 </Button>
                 <Button type="button" variant="outline" disabled={!hasSolution}
                   onClick={() => navigate(`/admin/schedules/${id}/timetable`)}>
@@ -309,7 +319,7 @@ export function ScheduleDetailPage() {
               <Sparkles className="h-4 w-4 text-yellow-400" />
               Timetable Solution
             </CardTitle>
-            {hasSolution && (
+            {hasSolution && parsedScore && (
               <Button type="button" variant="ghost" size="sm" onClick={fetchSolution} disabled={isLoadingSolution}
                 className="text-slate-400 hover:text-white h-7 px-2">
                 <RefreshCw className={cn("h-3.5 w-3.5", isLoadingSolution && "animate-spin")} />
@@ -323,7 +333,11 @@ export function ScheduleDetailPage() {
               <Loader2 className="h-4 w-4 animate-spin" />Checking…
             </div>
           ) : !hasSolution ? (
-            <p className="text-slate-500 text-sm">No solution generated yet. Start solving to create a timetable.</p>
+            <p className="text-slate-500 text-sm">
+              {solution?.lessons.length === 0
+                ? "This schedule has no lessons. Assignment completeness does not confirm that publication will be accepted."
+                : "No saved solution is available yet. Start solving to create a timetable."}
+            </p>
           ) : (
             <div className="flex flex-wrap items-center gap-4">
               {solution?.fullyAssigned ? (
@@ -336,17 +350,17 @@ export function ScheduleDetailPage() {
                 </span>
               )}
 
-              {solution?.score && (
+              {solution?.score && solution.score !== "N/A" && (
                 <span className={cn(
                   "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold",
-                  parsedScore && parsedScore.hard < 0
+                  parsedScore?.hard !== undefined && parsedScore.hard < 0
                     ? "bg-red-500/20 border-red-500/30 text-red-400"
-                    : "bg-green-500/20 border-green-500/30 text-green-400"
+                    : "bg-slate-500/20 border-slate-500/30 text-slate-300"
                 )}>
-                  {parsedScore && parsedScore.hard < 0 ? "❌" : "✅"}
+                  {parsedScore?.hard !== undefined && parsedScore.hard < 0 ? "❌" : ""}
                   {parsedScore
                     ? `${parsedScore.hard} hard / ${parsedScore.soft} soft`
-                    : solution.score}
+                    : `Saved score: ${solution.score}`}
                 </span>
               )}
 
@@ -369,6 +383,11 @@ export function ScheduleDetailPage() {
               )}
             </div>
           )}
+          {hasSolution && (
+            <p className="mt-3 text-xs text-slate-500">
+              Assignment completeness and solver score do not guarantee that the server will accept publication.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -380,7 +399,7 @@ export function ScheduleDetailPage() {
               <CardTitle>Lessons Summary</CardTitle>
               <CardDescription>Overview of planning entities for this schedule.</CardDescription>
             </div>
-            {(isLoadingLessons || (isSolving && isLoadingSolution)) && (
+            {(isSolving && isLoadingSolution) && (
               <Loader2 className="h-4 w-4 text-slate-500 animate-spin" />
             )}
           </div>
@@ -433,7 +452,13 @@ export function ScheduleDetailPage() {
             </div>
 
             {/* Solver score cards — only shown after solving */}
-            {hasSolution && (
+            {hasSolution && solution?.score === "N/A" && (
+              <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 text-center">
+                <p className="text-3xl font-bold text-slate-400">N/A</p>
+                <p className="text-sm text-muted-foreground mt-1">Saved score unavailable</p>
+              </div>
+            )}
+            {hasSolution && solution?.score !== "N/A" && (
               <>
                 <div className={cn(
                   "rounded-lg border p-4 text-center",
@@ -442,7 +467,7 @@ export function ScheduleDetailPage() {
                   <p className={cn("text-3xl font-bold", (solution?.hardScore ?? 0) < 0 ? "text-red-400" : "text-green-400")}>
                     {solution?.hardScore ?? 0}
                   </p>
-                  <p className="text-sm text-muted-foreground mt-1">Hard Violations</p>
+                  <p className="text-sm text-muted-foreground mt-1">Hard Score</p>
                 </div>
                 <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 text-center">
                   <p className="text-3xl font-bold text-yellow-400">{solution?.softScore ?? 0}</p>

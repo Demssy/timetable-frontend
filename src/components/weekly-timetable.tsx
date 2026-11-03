@@ -132,6 +132,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
 
   const [filter, setFilter] = useState<number | "all">("all")
   const [events, setEvents] = useState<ScheduledEvent[]>([])
+  const [refreshKey, setRefreshKey] = useState(0)
   const [activeSchedule, setActiveSchedule] = useState<ScheduleMetadataDTO | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -220,7 +221,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
     return () => {
       cancelled = true
     }
-  }, [selectedWeekStart])
+  }, [selectedWeekStart, refreshKey])
 
   const filteredEvents = useMemo(() => {
     const base = events
@@ -288,8 +289,10 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
         prev.map((e) => (e.id === cancelDialogEvent.id ? { ...e, isCancelled: true } : e))
       )
       setCancelDialogEvent(null)
+      setRefreshKey((key) => key + 1)
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to cancel lesson")
+      setRefreshKey((key) => key + 1)
     } finally {
       setCancelActionLoading(false)
     }
@@ -303,8 +306,10 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
       setEvents((prev) =>
         prev.map((e) => (e.id === event.id ? { ...e, isCancelled: false } : e))
       )
+      setRefreshKey((key) => key + 1)
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to restore lesson")
+      setRefreshKey((key) => key + 1)
     } finally {
       setRestoreLoadingId(null)
     }

@@ -6,7 +6,7 @@ import type { ScoreExplanationResponse } from "@/types/solver"
 
 interface ScoreExplanationPanelProps {
   readonly scheduleId: number | null
-  readonly hardScore: number
+  readonly hardScore: number | null
   readonly explanation: ScoreExplanationResponse | null
   readonly isLoading: boolean
   readonly error: string | null
@@ -24,7 +24,8 @@ const FILTERS: ReadonlyArray<{ key: FilterKey; label: string }> = [
 ]
 
 function renderHardScore(score: number) {
-  if (score !== 0) return <span className="text-red-400 font-semibold">{score}</span>
+  if (score < 0) return <span className="text-red-400 font-semibold">{score}</span>
+  if (score > 0) return <span className="text-green-400 font-semibold">+{score}</span>
   return <span className="text-slate-600">—</span>
 }
 
@@ -41,8 +42,9 @@ export function ScoreExplanationPanel({
   error,
   onRequestLoad,
 }: ScoreExplanationPanelProps) {
-  const [open, setOpen] = useState<boolean>(() => hardScore < 0)
-  const isViolated = hardScore < 0
+  const [open, setOpen] = useState<boolean>(() => hardScore !== null && hardScore < 0)
+  const isViolated = (hardScore !== null && hardScore < 0) ||
+    (explanation?.violations.some((violation) => violation.hardScore < 0) ?? false)
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [filter, setFilter] = useState<FilterKey>("all")
 
@@ -81,6 +83,7 @@ export function ScoreExplanationPanel({
       {/* Header / toggle */}
       <button
         type="button"
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-white/5 transition-colors"
         onClick={handleToggle}
       >
@@ -102,11 +105,11 @@ export function ScoreExplanationPanel({
             <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
               ⚠ Hard violations detected
             </span>
-          ) : (
+          ) : hardScore !== null ? (
             <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">
-              ✅ Feasible solution
+              No hard-score violations reported
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 text-slate-500 shrink-0">
@@ -125,7 +128,10 @@ export function ScoreExplanationPanel({
           )}
 
           {error && !isLoading && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">{error}</div>
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400" role="alert">
+              <p>{error}</p>
+              <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRequestLoad}>Retry</Button>
+            </div>
           )}
 
           {!isLoading && !error && !explanation && (
@@ -135,17 +141,23 @@ export function ScoreExplanationPanel({
           )}
 
           {!isLoading && explanation && sortedViolations.length === 0 && (
-            <p className="text-sm text-slate-500 py-3 text-center">No constraint data available yet.</p>
+            <p className="text-sm text-slate-500 py-3 text-center">
+              No non-zero constraint impacts were returned. This is not a publication validation.
+            </p>
           )}
 
           {!isLoading && explanation && sortedViolations.length > 0 && (
             <div className="overflow-x-auto mt-1">
+              <p className="mb-3 text-xs text-slate-500">
+                Score impacts describe the current constraint matches; they do not guarantee that the server will accept publication.
+              </p>
               {/* Filter pills */}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {FILTERS.map(f => (
                   <button
                     key={f.key}
                     type="button"
+                    aria-pressed={filter === f.key}
                     onClick={() => setFilter(f.key)}
                     className={cn(
                       "rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-colors",
@@ -175,22 +187,24 @@ export function ScoreExplanationPanel({
                       </td>
                     </tr>
                   )}
-                  {filteredViolations.map((v) => {
+                  {filteredViolations.map((v, index) => {
                     const hasDetails = (v.details?.length ?? 0) > 0
-                    const isExpanded = expandedRows[v.constraintName]
+                    const rowKey = `${v.constraintName || "unnamed"}-${index}`
+                    const isExpanded = expandedRows[rowKey]
                     const isReward = v.hardScore === 0 && v.softScore > 0
                     return (
-                      <Fragment key={v.constraintName}>
+                      <Fragment key={rowKey}>
                         <tr
                           className={cn(
                             "cursor-pointer hover:bg-white/5 transition-colors",
-                            v.hardScore !== 0 && "bg-red-500/5 hover:bg-red-500/10",
+                            v.hardScore < 0 && "bg-red-500/5 hover:bg-red-500/10",
+                            isReward && "bg-emerald-500/5 hover:bg-emerald-500/10",
                           )}
-                          onClick={() => toggleRow(v.constraintName)}
+                          onClick={() => toggleRow(rowKey)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault()
-                              toggleRow(v.constraintName)
+                              toggleRow(rowKey)
                             }
                           }}
                           tabIndex={0}
@@ -201,7 +215,7 @@ export function ScoreExplanationPanel({
                               {isExpanded
                                 ? <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                                 : <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
-                              {v.constraintName}
+                              {v.constraintName?.trim() || "Unnamed constraint"}
                             </span>
                           </td>
 
@@ -226,7 +240,7 @@ export function ScoreExplanationPanel({
                               <div
                                 className={cn(
                                   "bg-black/30 border-l-2 px-3 py-2 space-y-2 max-h-80 overflow-y-auto",
-                                  isReward ? "border-emerald-500/50" : "border-red-500/50",
+                                  isReward ? "border-emerald-500/50" : v.hardScore < 0 ? "border-red-500/50" : "border-orange-500/50",
                                 )}
                               >
                                 {hasDetails ? (

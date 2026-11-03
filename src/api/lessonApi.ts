@@ -1,6 +1,6 @@
 import { apiFetch } from "@/api/client"
 import { DanceLevel } from "@/types/enums"
-import type { ScheduledLessonDTO, CreateLessonRequest, StudentResponse } from "@/types/schedule"
+import type { ScheduledLessonDTO, CreateLessonRequest, UpdateLessonRequest, StudentResponse } from "@/types/schedule"
 import type { TeacherResponse } from "@/types/teacher"
 
 const BASE = "/api/admin/lessons"
@@ -134,7 +134,7 @@ export const lessonApi = {
   create: async (data: CreateLessonRequest) =>
     normalizeLesson(await apiFetch<RawLesson>(BASE, { method: "POST", body: JSON.stringify(data) })),
 
-  update: async (id: number, data: CreateLessonRequest) =>
+  update: async (id: number, data: UpdateLessonRequest) =>
     normalizeLesson(await apiFetch<RawLesson>(`${BASE}/${id}`, { method: "PUT", body: JSON.stringify(data) })),
 
     updateTemplate: async (id: number, data: CreateLessonRequest) =>
@@ -166,7 +166,7 @@ export async function cancelScheduledLesson(
   return normalizeLesson(
     await apiFetch<RawLesson>(`${SCHEDULED_BASE}/${id}/cancel`, {
       method: "PATCH",
-      body: JSON.stringify({ reason: reason ?? null }),
+      ...(reason ? { body: JSON.stringify({ reason }) } : {}),
     }),
   )
 }

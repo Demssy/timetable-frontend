@@ -236,28 +236,22 @@ export function MySchedulePage() {
   const isAdmin = user?.role === UserRole.ADMIN
   const scheduleRole: LessonRole = isTeacher ? "TEACHER" : "STUDENT"
 
-  useEffect(() => {
-    let aborted = false
-    setIsLoading(true)
+  const refreshSchedule = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsLoading(true)
     setError(null)
-
-    setCancelTarget(null)
-    lessonApi.getMySchedule(isDualRole ? scheduleRole : undefined)
-      .then((result) => {
-        if (aborted) return
-        setLessons(result)
-      })
-      .catch((err: unknown) => {
-        if (!aborted) setError(err instanceof Error ? err.message : "Failed to load schedule")
-      })
-      .finally(() => {
-        if (!aborted) setIsLoading(false)
-      })
-
-    return () => {
-      aborted = true
+    try {
+      setLessons(await lessonApi.getMySchedule(isDualRole ? scheduleRole : undefined))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load schedule")
+    } finally {
+      if (showLoading) setIsLoading(false)
     }
-  }, [isDualRole, scheduleRole, user?.id])
+  }, [isDualRole, scheduleRole])
+
+  useEffect(() => {
+    setCancelTarget(null)
+    void refreshSchedule(true)
+  }, [refreshSchedule, user?.id])
 
   // Check availability only when the schedule is empty (null = unknown yet)
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null)
@@ -282,13 +276,15 @@ export function MySchedulePage() {
         const updated = await cancelScheduledLesson(cancelTarget.id, reason || undefined)
         setLessons((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
         setCancelTarget(null)
+        await refreshSchedule()
       } catch (err) {
         alert(err instanceof Error ? err.message : "Failed to cancel lesson")
+        await refreshSchedule()
       } finally {
         setCancelActionLoading(false)
       }
     },
-    [cancelTarget],
+    [cancelTarget, refreshSchedule],
   )
 
   const handleRestore = useCallback(async (lesson: ScheduledLessonDTO) => {
@@ -296,12 +292,14 @@ export function MySchedulePage() {
     try {
       const updated = await restoreScheduledLesson(lesson.id)
       setLessons((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+      await refreshSchedule()
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to restore lesson")
+      await refreshSchedule()
     } finally {
       setActionLoadingId(null)
     }
-  }, [])
+  }, [refreshSchedule])
 
   const visibleLessons = showCancelled ? lessons : lessons.filter((l) => !l.isCancelled)
 

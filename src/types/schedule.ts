@@ -97,6 +97,19 @@ export interface CreateLessonRequest {
   roomId?: number | null
 }
 
+/** Backend request shape for snapshot updates; only timeslot and room affect a move. */
+export interface UpdateLessonRequest {
+  teacherId: number
+  danceGroupId?: number | null
+  studentId?: number | null
+  durationMinutes: number
+  isPrivate: boolean
+  isPinned: boolean
+  isActive: boolean
+  timeslotId?: number | null
+  roomId?: number | null
+}
+
 // ─── Schedule Metadata ────────────────────────────────────────────────────────
 
 export const ScheduleStatus = {
