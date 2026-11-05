@@ -13,6 +13,7 @@ import { getLessonCategory } from "@/types/schedule"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { SolverSettingsDialog } from "@/components/SolverSettingsDialog"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -276,6 +277,7 @@ export function ScheduleDetailPage() {
           </div>
 
           <div className="flex gap-3 flex-wrap">
+            <SolverSettingsDialog />
             {!isSolving && !hasSolution && (
               <Button type="button" onClick={handleStartSolving} disabled={schedule?.status !== "DRAFT" || status === null || isStartingSolver} className="bg-green-600 hover:bg-green-700">
                 {isStartingSolver ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}{isStartingSolver ? "Starting…" : "Start Solving"}
