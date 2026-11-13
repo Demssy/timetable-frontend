@@ -1,16 +1,29 @@
-// Base fetch wrapper — mirrors userService/teacherService pattern.
-// Uses credentials: "include" so the HTTP-only JWT cookie is sent automatically.
+// src/api/client.ts
+
+export const AUTH_EXPIRED_EVENT = "auth:session-expired"
+let isRedirectingToLogin = false
+
+export function expireSession(): void {
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+  if (!isRedirectingToLogin && window.location.pathname !== "/login") {
+    isRedirectingToLogin = true
+    window.location.replace("/login?expired=true")
+  }
+}
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  readonly status: number
+
+  constructor(message: string, status: number) {
     super(message)
     this.name = "ApiError"
+    this.status = status
   }
 }
 
 export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
+    path: string,
+    options: RequestInit = {}
 ): Promise<T> {
   const response = await fetch(`${path}`, {
     ...options,
@@ -21,6 +34,12 @@ export async function apiFetch<T>(
     credentials: "include",
   })
 
+  if (response.status === 401 && !path.startsWith("/api/auth/")) {
+    expireSession()
+    // Keep promise pending during redirect so active components do not flash error banners
+    return new Promise<T>(() => {})
+  }
+
   if (!response.ok) {
     const body = await response.text().catch(() => "")
     let message: string | undefined
@@ -28,7 +47,7 @@ export async function apiFetch<T>(
       try {
         const errorData: unknown = JSON.parse(body)
         if (errorData && typeof errorData === "object" && "message" in errorData &&
-          typeof errorData.message === "string" && errorData.message.trim()) {
+            typeof errorData.message === "string" && errorData.message.trim()) {
           message = errorData.message
         } else if (typeof errorData === "string" && errorData.trim()) {
           message = errorData

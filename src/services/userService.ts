@@ -1,6 +1,7 @@
 import type { User, UpdateAvailabilityRequest, StudentResponse, UpdateStudentProfileRequest } from "@/types/user"
 import type { TeacherResponse } from "@/types/teacher"
 import type { AvailabilityRole } from "@/types/enums"
+import { apiFetch } from "@/api/client"
 
 const API_BASE = "/api/admin/users"
 const USER_API = "/api/user"
@@ -11,31 +12,7 @@ class UserService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${endpoint}`
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    }
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: "include",
-    })
-
-    if (!response.ok) {
-        // Simple error handling
-       const errorData = await response.json().catch(() => null)
-       throw new Error(errorData?.message || `Request failed: ${response.statusText}`)
-    }
-
-    // Handle empty responses (like 204 No Content)
-    if (response.status === 204) {
-      return {} as T
-    }
-
-    return response.json()
+    return apiFetch<T>(endpoint, options)
   }
 
   async getAllUsers(): Promise<User[]> {
@@ -139,7 +116,21 @@ class UserService {
       body: JSON.stringify(data),
     })
   }
+  /** Admin: GET /api/students/{id} */
+  async getStudentById(id: number): Promise<StudentResponse> {
+    return this.request<StudentResponse>(`${STUDENT_API}/${id}`)
+  }
+
+  /** Admin: PUT /api/students/{id} — full profile update */
+  async updateStudentById(
+    id: number,
+    data: UpdateStudentProfileRequest & { email: string },
+  ): Promise<StudentResponse> {
+    return this.request<StudentResponse>(`${STUDENT_API}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
 }
 
 export const userService = new UserService()
-

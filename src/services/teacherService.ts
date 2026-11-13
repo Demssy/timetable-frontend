@@ -6,6 +6,7 @@ import type {
   DanceStyleDTO,
 } from "@/types/teacher"
 import type { StudentResponse, WeeklyAvailability as WeeklyAvailabilityDTO } from "@/types/user"
+import { ApiError, apiFetch } from "@/api/client"
 
 const API_BASE = "/api/teachers"
 const LEGACY_API_BASE = "/api/admin/teachers"
@@ -15,32 +16,14 @@ class TeacherService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(endpoint, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers as Record<string, string>),
-      },
-      credentials: "include",
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
-      throw new Error(errorData?.message || `Request failed: ${response.statusText}`)
-    }
-
-    if (response.status === 204) {
-      return {} as T
-    }
-
-    return response.json()
+    return apiFetch<T>(endpoint, options)
   }
 
   private async requestWithLegacyFallback<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     try {
       return await this.request<T>(endpoint, options)
     } catch (error) {
-      const isNotFound = error instanceof Error && (error.message.includes("404") || error.message.includes("Not Found"))
+      const isNotFound = error instanceof ApiError && error.status === 404
       const canFallback = endpoint.startsWith(API_BASE)
       if (!isNotFound || !canFallback) throw error
 
@@ -59,7 +42,7 @@ class TeacherService {
       try {
         return await this.request<DanceStyleDTO[]>(endpoint)
       } catch (error) {
-        const isNotFound = error instanceof Error && (error.message.includes("404") || error.message.includes("Not Found"))
+        const isNotFound = error instanceof ApiError && error.status === 404
         if (!isNotFound) throw error
       }
     }
@@ -79,6 +62,14 @@ class TeacherService {
   }
 
   async updateTeacher(id: number, data: UpdateTeacherRequest): Promise<TeacherResponse> {
+    return this.requestWithLegacyFallback<TeacherResponse>(`${API_BASE}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** Admin: PUT /api/teachers/{id} with a full profile payload */
+  async updateTeacherProfileById(id: number, data: UpdateTeacherProfileRequest): Promise<TeacherResponse> {
     return this.requestWithLegacyFallback<TeacherResponse>(`${API_BASE}/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),

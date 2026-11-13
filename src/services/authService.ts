@@ -1,4 +1,5 @@
 import type {LoginRequest, RegisterRequest, User} from "@/types/user"
+import { ApiError, apiFetch } from "@/api/client"
 
 class AuthService {
   private async request<T>(
@@ -18,26 +19,8 @@ class AuthService {
       credentials: "include", // Important: send cookies with request
     })
 
-    // Handle token expiration
     if (response.status === 401) {
-      const refreshed = await this.refreshAccessToken()
-      if (refreshed) {
-        // Retry original request
-        const retryResponse = await fetch(url, {
-          ...options,
-          headers,
-          credentials: "include",
-        })
-
-        if (!retryResponse.ok) {
-          throw new Error(`Request failed: ${retryResponse.statusText}`)
-        }
-
-        return retryResponse.json()
-      } else {
-        // Refresh failed, redirect to login
-        throw new Error("Session expired. Please login again.")
-      }
+      throw new ApiError("Session expired. Please login again.", 401)
     }
 
     if (!response.ok) {
@@ -77,25 +60,10 @@ class AuthService {
     return this.request<User>("/user/me")
   }
 
-  async refreshAccessToken(): Promise<boolean> {
-    try {
-      await fetch(`/api/auth/refresh`, {
-        method: "POST",
-        credentials: "include", // Send refresh token cookie
-      })
-
-      return true
-    } catch (error) {
-      console.error("Failed to refresh token:", error)
-      return false
-    }
-  }
-
   async logout(): Promise<void> {
     try {
-      await fetch(`/api/auth/logout`, {
+      await apiFetch<void>("/api/auth/logout", {
         method: "GET",
-        credentials: "include",
       })
     } catch (error) {
       console.error("Logout failed:", error)

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Link, useNavigate} from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 
 export function LoginForm() {
@@ -15,10 +15,17 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const isSessionExpired = searchParams.get("expired") === "true"
   const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSessionExpired) {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete("expired")
+      setSearchParams(nextParams, { replace: true })
+    }
     setError("")
     setIsLoading(true)
 
@@ -50,6 +57,14 @@ export function LoginForm() {
             <h1 className="text-2xl font-bold text-white">Welcome back</h1>
             <p className="text-sm text-slate-400">Sign in to your timetable account</p>
           </div>
+
+          {isSessionExpired && !error && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3" role="status">
+              <p className="text-sm text-amber-300">
+                Your session has expired. Please sign in again to continue.
+              </p>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">

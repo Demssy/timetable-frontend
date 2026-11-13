@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import type { UserResponse, WeeklyAvailabilityDTO, AvailabilityRole } from '../types/availability.types';
 import { deleteSlot } from '../api/availabilityApi';
+import { userService } from '@/services/userService';
+import { teacherService } from '@/services/teacherService';
 import { WeeklyAvailabilityGrid } from './WeeklyAvailabilityGrid';
 import { SlotFormModal } from './SlotFormModal';
 import { SegmentedTabs } from '@/components/ui/segmented-tabs';
@@ -38,6 +40,62 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
     },
     onError: (err: Error) => toast.error(err.message || 'Delete error'),
   });
+
+  const { data: desiredProfile, isLoading: desiredLoading } = useQuery({
+    queryKey: ['desiredLessons', selectedUser?.id, userRole],
+    enabled: selectedUser != null,
+    queryFn: () =>
+      userRole === 'TEACHER'
+        ? teacherService.getTeacherById(selectedUser!.id)
+        : userService.getStudentById(selectedUser!.id),
+  });
+  const savedDesired = desiredProfile?.desiredLessonsPerWeek ?? null;
+  const [desiredInput, setDesiredInput] = useState('');
+
+  useEffect(() => {
+    setDesiredInput(savedDesired != null ? String(savedDesired) : '');
+  }, [selectedUser?.id, userRole, savedDesired]);
+
+  const desiredMutation = useMutation({
+    mutationFn: async (value: number | null) => {
+      const id = selectedUser!.id;
+      // PUT replaces the whole profile, so re-fetch and resend current values
+      if (userRole === 'TEACHER') {
+        const t = await teacherService.getTeacherById(id);
+        return teacherService.updateTeacherProfileById(id, {
+          fullName: t.fullName,
+          maxDailyHours: t.maxDailyHours,
+          colorCode: t.colorCode,
+          desiredLessonsPerWeek: value,
+          qualifiedStyleIds: t.qualifiedStyles.map((s) => s.id),
+        });
+      }
+      const s = await userService.getStudentById(id);
+      return userService.updateStudentById(id, {
+        email: s.email,
+        fullName: s.fullName,
+        birthDate: s.birthDate,
+        danceLevel: s.danceLevel,
+        parentContact: s.parentContact,
+        desiredLessonsPerWeek: value,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desiredLessons', selectedUser?.id, userRole] });
+      toast.success('Desired lessons per week saved');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Save error'),
+  });
+
+  function handleSaveDesired() {
+    const trimmed = desiredInput.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 0)) {
+      toast.error('Must be a whole number ≥ 0');
+      return;
+    }
+    desiredMutation.mutate(parsed);
+  }
 
   function handleDeleteSlot(slotId: number) {
     if (!confirm('Delete this availability slot?')) return;
@@ -122,6 +180,28 @@ export function UserAvailabilityPanel({ userId, users }: UserAvailabilityPanelPr
           />
         </div>
       )}
+
+      <div className="px-4 pt-4 flex items-center gap-2">
+        <label htmlFor="desired-lessons" className="text-sm text-gray-300">
+          Desired lessons per week
+        </label>
+        <input
+          id="desired-lessons"
+          type="number"
+          min={0}
+          step={1}
+          value={desiredInput}
+          onChange={(e) => setDesiredInput(e.target.value)}
+          className="w-20 bg-gray-700 text-gray-100 text-sm rounded-lg px-2 py-1 border border-gray-600"
+        />
+        <button
+          onClick={handleSaveDesired}
+          disabled={desiredLoading || desiredMutation.isPending || desiredInput.trim() === (savedDesired != null ? String(savedDesired) : '')}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+        >
+          {desiredMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
 
       {/* Grid */}
       <div className="p-4">
