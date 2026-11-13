@@ -29,7 +29,9 @@ class UserService {
 
   async getStudents(): Promise<User[]> {
     const all = await this.getAllUsers()
-    return all.filter((u) => u.role === "STUDENT")
+    return all.filter(
+        (u) => u.role === "STUDENT" || (u.roles?.includes("ROLE_STUDENT") ?? false)
+    )
   }
 
   async searchByEmail(query: string): Promise<User[]> {

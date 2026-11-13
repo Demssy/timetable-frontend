@@ -41,15 +41,77 @@ export interface ScheduledEvent {
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
-/** First hour shown in the classic grid. Must stay in sync with TIME_SLOTS[0]. */
-const GRID_START_HOUR = 8
+/** Default first and last hours shown in the classic grid. */
+const DEFAULT_GRID_START_HOUR = 8
+const DEFAULT_GRID_END_HOUR = 21
 /** Height of one hour row in pixels. Must match the Tailwind class used on grid cells (h-28 = 112px). */
 const SLOT_HEIGHT_PX = 112
 
-const TIME_SLOTS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00",
-  "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00",
-]
+interface LaidOutEvent {
+  event: ScheduledEvent
+  colIndex: number
+  totalCols: number
+}
+
+function toMinutesOfDay(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+function getEventEndMinutes(event: ScheduledEvent): number {
+  return Math.max(toMinutesOfDay(event.endTime), toMinutesOfDay(event.startTime) + 30)
+}
+
+/** Assign side-by-side columns within each connected cluster of overlapping events. */
+function layoutOverlappingEvents(dayEvents: ScheduledEvent[]): LaidOutEvent[] {
+  const items = dayEvents
+    .map((event) => ({
+      event,
+      startMin: toMinutesOfDay(event.startTime),
+      endMin: getEventEndMinutes(event),
+    }))
+    .sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin || a.event.id.localeCompare(b.event.id))
+
+  const clusters: Array<typeof items> = []
+  let currentCluster: typeof items = []
+  let clusterMaxEnd = -1
+
+  for (const item of items) {
+    if (currentCluster.length === 0 || item.startMin < clusterMaxEnd) {
+      currentCluster.push(item)
+      clusterMaxEnd = Math.max(clusterMaxEnd, item.endMin)
+    } else {
+      clusters.push(currentCluster)
+      currentCluster = [item]
+      clusterMaxEnd = item.endMin
+    }
+  }
+  if (currentCluster.length > 0) clusters.push(currentCluster)
+
+  const laidOut: LaidOutEvent[] = []
+  for (const cluster of clusters) {
+    const columnEnds: number[] = []
+    const assignments: Array<{ event: ScheduledEvent; colIndex: number }> = []
+
+    for (const item of cluster) {
+      let colIndex = columnEnds.findIndex((colEnd) => colEnd <= item.startMin)
+      if (colIndex === -1) {
+        colIndex = columnEnds.length
+        columnEnds.push(item.endMin)
+      } else {
+        columnEnds[colIndex] = item.endMin
+      }
+      assignments.push({ event: item.event, colIndex })
+    }
+
+    const totalCols = columnEnds.length
+    for (const { event, colIndex } of assignments) {
+      laidOut.push({ event, colIndex, totalCols })
+    }
+  }
+
+  return laidOut
+}
 
 const DAY_TO_INDEX: Record<string, number> = {
   SUNDAY: 0, MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6,
@@ -268,6 +330,22 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
     return Array.from(blocks.values()).sort((a, b) => a.start.localeCompare(b.start))
   }, [events])
 
+  const { gridStartHour, timeSlots } = useMemo(() => {
+    let startHour = DEFAULT_GRID_START_HOUR
+    let endHour = DEFAULT_GRID_END_HOUR + 1
+    for (const event of filteredEvents) {
+      startHour = Math.min(startHour, Math.floor(toMinutesOfDay(event.startTime) / 60))
+      endHour = Math.max(endHour, Math.ceil(getEventEndMinutes(event) / 60))
+    }
+    return {
+      gridStartHour: startHour,
+      timeSlots: Array.from(
+        { length: endHour - startHour },
+        (_, index) => `${String(startHour + index).padStart(2, "0")}:00`,
+      ),
+    }
+  }, [filteredEvents])
+
   const goToPreviousWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, -1))
   const goToNextWeek = () => setSelectedWeekStart((prev) => addWeeks(prev, 1))
   const goToCurrentWeek = () => setSelectedWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))
@@ -332,18 +410,10 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
   }
 
   // Position calculation for the Classic view (absolute positioning).
-  // Each hour = SLOT_HEIGHT_PX px. The origin is GRID_START_HOUR.
   const getEventPosition = (event: ScheduledEvent) => {
-    const startHour    = Number.parseInt(event.startTime.split(":")[0])
-    const startMinutes = Number.parseInt(event.startTime.split(":")[1])
-    const endHour      = Number.parseInt(event.endTime.split(":")[0])
-    const endMinutes   = Number.parseInt(event.endTime.split(":")[1])
-
-    const startTotalMinutes  = (startHour - GRID_START_HOUR) * 60 + startMinutes
-    const durationMinutes    = (endHour - startHour) * 60 + (endMinutes - startMinutes)
-
-    const top    = (startTotalMinutes / 60) * SLOT_HEIGHT_PX
-    const height = Math.max((durationMinutes / 60) * SLOT_HEIGHT_PX, SLOT_HEIGHT_PX)
+    const startMinutes = toMinutesOfDay(event.startTime)
+    const top = ((startMinutes - gridStartHour * 60) / 60) * SLOT_HEIGHT_PX
+    const height = ((getEventEndMinutes(event) - startMinutes) / 60) * SLOT_HEIGHT_PX
 
     return { top, height }
   }
@@ -579,7 +649,7 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
                 <div className="flex">
                   {/* Time column */}
                   <div className="w-[80px] shrink-0 border-r border-border/50 bg-muted/5">
-                    {TIME_SLOTS.map((time) => (
+                    {timeSlots.map((time) => (
                         <div key={time} className="h-28 border-b border-border/30 pr-3 text-right text-xs font-mono text-muted-foreground flex items-start justify-end pt-2">
                           {time}
                         </div>
@@ -594,41 +664,36 @@ export function WeeklyTimetable({mobileOnly, viewAs}: WeeklyTimetableProps) {
                       return (
                           <div key={day} className="relative border-r border-border/50 last:border-r-0">
                             {/* Hour grid lines (thin, transparent) */}
-                            {TIME_SLOTS.map((time) => (
+                            {timeSlots.map((time) => (
                                 <div key={time} className="h-28 border-b border-border/20" />
                             ))}
 
                             {/* Lessons (absolute positioning) */}
-                            {Object.values(
-                                dayEvents.reduce((acc, event) => {
-                                  const key = `${event.startTime}-${event.endTime}`
-                                  if (!acc[key]) acc[key] = []
-                                  acc[key].push(event)
-                                  return acc
-                                }, {} as Record<string, ScheduledEvent[]>)
-                            ).map((eventGroup) => {
-                              const firstEvent = eventGroup[0]
-                              const { top, height } = getEventPosition(firstEvent)
+                            <div className="absolute inset-y-0 left-1 right-1 pointer-events-none">
+                              {layoutOverlappingEvents(dayEvents).map(({ event, colIndex, totalCols }) => {
+                                const { top, height } = getEventPosition(event)
 
-                              return (
-                                  <div
-                                      key={`group-${firstEvent.id}`}
-                                      className="absolute left-1 right-1 flex gap-1 z-10"
-                                      style={{ top: `${top}px`, height: `${height}px` }}
-                                  >
-                                    {eventGroup.map((event) => (
-                                        <div key={event.id} className="flex-1 min-w-0 h-full">
-                                          <EventCard
-                                              event={event}
-                                              onClick={() => setSelectedEvent(event)}
-                                              isSelected={selectedEvent?.id === event.id}
-                                              variant="grid"
-                                          />
-                                        </div>
-                                    ))}
-                                  </div>
-                              )
-                            })}
+                                return (
+                                    <div
+                                        key={event.id}
+                                        className="absolute z-10 overflow-hidden pointer-events-auto px-0.5"
+                                        style={{
+                                          top: `${top}px`,
+                                          height: `${height}px`,
+                                          left: `${(colIndex / totalCols) * 100}%`,
+                                          width: `${100 / totalCols}%`,
+                                        }}
+                                    >
+                                      <EventCard
+                                          event={event}
+                                          onClick={() => setSelectedEvent(event)}
+                                          isSelected={selectedEvent?.id === event.id}
+                                          variant="grid"
+                                      />
+                                    </div>
+                                )
+                              })}
+                            </div>
                           </div>
                       )
                     })}

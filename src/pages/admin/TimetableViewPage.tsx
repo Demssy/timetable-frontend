@@ -390,59 +390,113 @@ export function TimetableViewPage() {
     }
   }, [isSolving, schedule?.status])
 
+  const activeScheduleIdRef = useRef<number | null>(scheduleId)
+
+  // Synchronously reset state whenever the route schedule ID changes
+  useEffect(() => {
+    activeScheduleIdRef.current = scheduleId
+    prevStatusRef.current = null
+    setSolution(null)
+    setSchedule(null)
+    setIsLoading(true)
+    setError(null)
+    setIsEditing(false)
+    setMovingLessonId(null)
+    setActiveLesson(null)
+    setManualTimeslotId(null)
+    setIsDeleteMode(false)
+    setDeletingLessonIds(new Set())
+    setActionError(null)
+    setScoreExplanation(null)
+    setUnmetStudents(null)
+    setExplanationError(null)
+    setUnmetError(null)
+  }, [scheduleId])
+
   const fetchSolution = useCallback(async () => {
     if (!scheduleId) return
-    try { const d=await solverApi.getSolution(scheduleId); setSolution(d) }
-    catch(e) { setError(e instanceof Error ? e.message : "Failed to load solution") }
-    finally { setIsLoading(false) }
-  },[scheduleId])
+    const targetId = scheduleId
+    try {
+      const d = await solverApi.getSolution(targetId)
+      if (activeScheduleIdRef.current === targetId) setSolution(d)
+    } catch (e) {
+      if (activeScheduleIdRef.current === targetId) {
+        setError(e instanceof Error ? e.message : "Failed to load solution")
+      }
+    } finally {
+      if (activeScheduleIdRef.current === targetId) setIsLoading(false)
+    }
+  }, [scheduleId])
 
   const fetchSchedule = useCallback(async () => {
     if (!scheduleId) return
-    try { setSchedule(await scheduleApi.getById(scheduleId)) }
-    catch(e) { setError(e instanceof Error ? e.message : "Failed to load schedule") }
+    const targetId = scheduleId
+    try {
+      const data = await scheduleApi.getById(targetId)
+      if (activeScheduleIdRef.current === targetId) setSchedule(data)
+    } catch (e) {
+      if (activeScheduleIdRef.current === targetId) {
+        setError(e instanceof Error ? e.message : "Failed to load schedule")
+      }
+    }
   }, [scheduleId])
 
   const fetchReports = useCallback(async () => {
     if (!scheduleId) return
-    setIsLoadingReports(true); setExplanationError(null); setUnmetError(null)
-    setScoreExplanation(null); setUnmetStudents(null)
+    const targetId = scheduleId
+    setIsLoadingReports(true)
+    setExplanationError(null)
+    setUnmetError(null)
+    setScoreExplanation(null)
+    setUnmetStudents(null)
     const [er, ur] = await Promise.allSettled([
-      solverApi.getScoreExplanation(scheduleId),
-      solverApi.getUnmetStudents(scheduleId),
+      solverApi.getScoreExplanation(targetId),
+      solverApi.getUnmetStudents(targetId),
     ])
-    if (er.status==="fulfilled") setScoreExplanation(er.value)
+    if (activeScheduleIdRef.current !== targetId) return
+    if (er.status === "fulfilled") setScoreExplanation(er.value)
     else setExplanationError(er.reason instanceof Error ? er.reason.message : "Failed to load score explanation")
-    if (ur.status==="fulfilled") setUnmetStudents(ur.value)
+    if (ur.status === "fulfilled") setUnmetStudents(ur.value)
     else setUnmetError(ur.reason instanceof Error ? ur.reason.message : "Failed to load student report")
     setIsLoadingReports(false)
-  },[scheduleId])
+  }, [scheduleId])
 
   useEffect(() => {
-    const prev = prevStatusRef.current; prevStatusRef.current = status
-    if (status===SolverStatus.NOT_SOLVING &&
-      (prev===null || prev!==SolverStatus.NOT_SOLVING)) {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    if (status === SolverStatus.NOT_SOLVING &&
+      (prev === null || prev !== SolverStatus.NOT_SOLVING)) {
       void Promise.all([fetchSchedule(), fetchSolution(), fetchReports()])
       setIsEditing(false)
       setIsDeleteMode(false)
     }
-  },[status, fetchSchedule, fetchSolution, fetchReports])
+  }, [status, fetchSchedule, fetchSolution, fetchReports])
 
   useEffect(() => {
-    fetchSolution(); fetchSchedule(); fetchReports(); startPolling()
-    return () => { stopPolling() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[])
+    if (!scheduleId) return
+    void Promise.all([fetchSolution(), fetchSchedule(), fetchReports()])
+    startPolling()
+    return () => {
+      stopPolling()
+    }
+  }, [scheduleId, fetchSolution, fetchSchedule, fetchReports, startPolling, stopPolling])
 
   const refreshAfterMutation = useCallback(async () => {
     await Promise.all([fetchSchedule(), fetchSolution(), fetchReports()])
   }, [fetchSchedule, fetchSolution, fetchReports])
 
   useEffect(() => {
-    let t: ReturnType<typeof setInterval>|undefined
-    if (isSolving) t = setInterval(fetchSolution,2000)
-    return () => { if(t) clearInterval(t) }
-  },[isSolving, fetchSolution])
+    if (!isSolving) return
+    let inFlight = false
+    const timer = setInterval(() => {
+      if (inFlight) return
+      inFlight = true
+      void fetchSolution().finally(() => {
+        inFlight = false
+      })
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [isSolving, fetchSolution])
 
   const handleEditToggle = useCallback(async () => {
     if (schedule?.status === ScheduleStatus.ARCHIVED || isSolving) return
